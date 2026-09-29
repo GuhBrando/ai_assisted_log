@@ -114,3 +114,19 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
   - `ruff check` e `ruff format --check` (avulsos, via `uvx`; o ruff não está na stack) sem apontamentos; `redocly lint` do contrato válido, com o aviso esperado de `GET /health`.
 - Sem commit neste prompt: o pedido não incluiu commit nem PR.
 - Em aberto (registrado em `.ai/business-rules.md`): máximo de `retention_days`, limite de `message` e `exception`, normalização de `environment`, agendamento do `refresh_log_metrics` e replica set para transações.
+
+## 006 — Commit e PR dos DDLs
+
+- **Data:** 2026-09-29
+- **Branch:** `feat/mongodb-ddl`
+- **PR:** #7
+
+**Prompt**
+
+> Pode commitar e subir uma PR
+
+**Executado**
+
+- Commit `e4339a2` com as mudanças do 005 (código do schema, `compose.yaml`, `docs/database/README.md`, contrato e `.ai/`). O `.env` ficou fora.
+- Push de `feat/mongodb-ddl` e PR #7 com base em `main`. O repositório não tem template de PR; a descrição segue o formato das PRs anteriores (resumo, como rodar, decisões a validar, verificação e pontos de atenção).
+- Esta entrada foi num segundo commit da mesma PR, depois de a PR existir, para registrar o número dela.
