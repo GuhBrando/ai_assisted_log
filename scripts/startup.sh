@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sobe a API de Logs e o MongoDB com Docker Compose e espera os dois ficarem saudáveis.
+# Sobe a API de Logs, o MongoDB e o Swagger UI do contrato com Docker Compose e espera tudo ficar no ar.
 #
 # Uso:   scripts/startup.sh
 # Parar: docker compose down        (mantém os dados do MongoDB)
@@ -35,7 +35,9 @@ docker compose up -d --build --wait
 docker compose ps
 
 api_address=$(docker compose port api 8000)
+swagger_address=$(docker compose port swagger 8080)
 echo
-echo "API:     http://$api_address"
-echo "Swagger: http://$api_address/docs"
-echo "Health:  http://$api_address/health"
+echo "API:       http://$api_address"
+echo "Swagger:   http://$api_address/docs"
+echo "Health:    http://$api_address/health"
+echo "Contrato:  http://$swagger_address"
