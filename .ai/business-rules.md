@@ -264,8 +264,17 @@ Propostas do [contrato da API](../docs/api/openapi.yaml), a validar:
 - [ ] Login de usuários: `POST /auth/login` com e-mail e senha devolve um token de usuário de 1 hora, nas mesmas regras do token de aplicação. Como diferenciar os dois tokens (sugestão: claim `aud`)?
 - [ ] Usuário de cliente inativo: o contrato propõe 403 no login e em todas as rotas do painel, como na ingestão (RN-03).
 - [ ] Quem cadastra clientes? O contrato propõe auto-cadastro sem credencial (`POST /customers`, com o primeiro usuário). E quem ativa ou desativa um cliente (`is_active`)? Hoje nenhuma rota altera esse campo.
-- [ ] Nome de aplicação único dentro do cliente, sem diferenciar maiúsculas de minúsculas (409), com índice único `{ customerId: 1, name: 1 }`.
+- [ ] Nome de aplicação único dentro do cliente, sem diferenciar maiúsculas de minúsculas (409), com índice único `{ customerId: 1, name: 1 }`. Já aplicado no schema do banco ([ADR-022](architecture.md#adr-022--unicidade-sem-diferenciar-maiúsculas-por-collation)).
 - [ ] Prefixo da API key único dentro da aplicação, porque identifica a chave na revogação.
 - [ ] Política de senha: o contrato propõe de 8 a 128 caracteres.
 - [ ] Paginação de `GET /logs` por cursor, com até 100 logs por página (padrão 50).
 - [ ] Formato do valor mascarado em `information_data` (os exemplos usam `***`).
+
+Do schema do banco ([docs/database/README.md](../docs/database/README.md)):
+
+- [ ] E-mail único sem diferenciar maiúsculas de minúsculas: "Ana@Example.com" e "ana@example.com" são o mesmo usuário. Já aplicado no schema ([ADR-022](architecture.md#adr-022--unicidade-sem-diferenciar-maiúsculas-por-collation)) e no contrato.
+- [ ] Máximo de `retention_days`: proposto 3650 dias (10 anos), já no contrato e no schema. Sem máximo, somar os dias estoura o `datetime` do Python e o envio de log responde 500.
+- [ ] Limite de tamanho de `message` e `exception`: sem ele, um log pode passar dos 16 MB de um documento, e a gravação falha com 500. Sugestão: 32 KB cada, com 422 acima disso.
+- [ ] `environment` é texto livre: "Production" e "production" viram ambientes diferentes nos filtros e no agregado. Normalizar em minúsculas, como as tags?
+- [ ] Agregado `log_metrics_hourly` para os gráficos do painel ([ADR-021](architecture.md#adr-021--modelo-dimensional-star-schema-onde-há-agregação)): confirmar, e definir quem agenda o `refresh_log_metrics` e com que frequência.
+- [ ] Replica set de um nó no ambiente local e em produção: habilita transações (`POST /customers` atômico) e change streams (base para alertas).

@@ -53,17 +53,19 @@ client = AsyncMongoClient(uri, uuidRepresentation="standard", tz_aware=True)
 | Arquivo | Papel |
 |---|---|
 | `Dockerfile` | Imagem da API: `python:3.14-slim` + uv 0.12.20. Instala com `uv sync --locked --no-dev` e roda com um usuário sem root |
-| `compose.yaml` | Serviços `api` e `mongo` (`mongo:8.0`, volume `mongo-data`), com healthcheck, e `swagger` (Swagger UI com `docs/api/openapi.yaml`). Portas publicadas só em `127.0.0.1` |
+| `compose.yaml` | Serviços `api` e `mongo` (`mongo:8.0`, volume `mongo-data`), com healthcheck; `migrate`, que aplica o schema do MongoDB e termina antes de a API subir; e `swagger` (Swagger UI com `docs/api/openapi.yaml`). Portas publicadas só em `127.0.0.1` |
 | `.env.example` | Modelo do `.env`: `API_PORT` (padrão 8000), `MONGO_PORT` (padrão 27017), `SWAGGER_PORT` (padrão 8080) e `JWT_SECRET` |
 | `scripts/startup.sh` | Cria o `.env`, gera o `JWT_SECRET` se estiver vazio, sobe os serviços e espera ficarem no ar |
 
 ```bash
-scripts/startup.sh           # sobe a API, o MongoDB e o Swagger UI do contrato (http://127.0.0.1:8080)
-docker compose logs -f api   # acompanha os logs da API
-docker compose down          # para os serviços; com -v apaga também os dados do MongoDB
+scripts/startup.sh               # sobe a API, o MongoDB e o Swagger UI do contrato (http://127.0.0.1:8080)
+docker compose logs -f api       # acompanha os logs da API
+docker compose run --rm migrate  # reaplica o schema do MongoDB
+docker compose down              # para os serviços; com -v apaga também os dados do MongoDB
 ```
 
-- A API lê `MONGODB_URI` (o `compose.yaml` aponta para `mongodb://mongo:27017/log_api`) e `JWT_SECRET`.
+- A API e o `migrate` leem `MONGODB_URI` (o `compose.yaml` aponta para `mongodb://mongo:27017/log_api`); a API lê também o `JWT_SECRET`.
+- O `migrate` usa a mesma imagem da API e roda `python -m app.infrastructure.mongodb.migrate`: cria as coleções com validator, collation e índices, e é idempotente. Se ele falhar, a API não sobe. Detalhes em [`docs/database/README.md`](../docs/database/README.md).
 - `GET /health` faz um `ping` no MongoDB: 200 se ele responde, 503 se não. É o healthcheck do container da API.
 - O Swagger UI em http://127.0.0.1:8080 mostra o contrato (`docs/api/openapi.yaml`); o de http://127.0.0.1:8000/docs é o gerado pelo FastAPI a partir do código.
 - O MongoDB local roda sem autenticação. Serve só para desenvolvimento; por isso a porta fica presa em `127.0.0.1`.
