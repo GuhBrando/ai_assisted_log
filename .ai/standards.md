@@ -16,7 +16,7 @@
 - Biblioteca nova entra antes na [stack aprovada](tech-stack.md#stack-aprovada).
 - `pyproject.toml` e `uv.lock` vão no mesmo commit. O build da imagem roda `uv sync --locked` e falha se o lock estiver desatualizado.
 - Configuração vem de variáveis de ambiente (`MONGODB_URI`, `JWT_SECRET`). Segredos não ficam no código nem no `compose.yaml`, e o `.env` não vai para o repositório.
-- O ambiente local sobe com `scripts/up.sh` (detalhes em [tech-stack.md](tech-stack.md#ambiente-local-docker)).
+- O ambiente local sobe com `scripts/startup.sh` (detalhes em [tech-stack.md](tech-stack.md#ambiente-local-docker)).
 
 ## Nomenclatura
 

@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     environment:
       MONGODB_URI: mongodb://mongo:27017/log_api
-      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (o scripts/up.sh gera um)}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (o scripts/startup.sh gera um)}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:

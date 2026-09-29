@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sobe a API de Logs e o MongoDB com Docker Compose e espera os dois ficarem saudáveis.
 #
-# Uso:   scripts/up.sh
+# Uso:   scripts/startup.sh
 # Parar: docker compose down        (mantém os dados do MongoDB)
 #        docker compose down -v     (apaga também o volume do MongoDB)
 set -euo pipefail

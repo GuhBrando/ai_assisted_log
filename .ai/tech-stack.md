@@ -42,7 +42,7 @@ client = AsyncMongoClient(uri, uuidRepresentation="standard", tz_aware=True)
 
 | Item | Valor |
 |---|---|
-| Segredo de assinatura | Variável de ambiente `JWT_SECRET`, com pelo menos 32 bytes aleatórios (no ambiente local, o `scripts/up.sh` gera um no `.env`) |
+| Segredo de assinatura | Variável de ambiente `JWT_SECRET`, com pelo menos 32 bytes aleatórios (no ambiente local, o `scripts/startup.sh` gera um no `.env`) |
 | Algoritmo | `HS256` |
 | Validade | 3600 segundos (1 hora), limitada à expiração da API key |
 | Claims obrigatórias | `sub` (id da aplicação), `iat`, `exp`, `jti` |
@@ -54,10 +54,10 @@ client = AsyncMongoClient(uri, uuidRepresentation="standard", tz_aware=True)
 | `Dockerfile` | Imagem da API: `python:3.14-slim` + uv 0.12.20. Instala com `uv sync --locked --no-dev` e roda com um usuário sem root |
 | `compose.yaml` | Serviços `api` e `mongo` (`mongo:8.0`, volume `mongo-data`), com healthcheck. Portas publicadas só em `127.0.0.1` |
 | `.env.example` | Modelo do `.env`: `API_PORT` (padrão 8000), `MONGO_PORT` (padrão 27017) e `JWT_SECRET` |
-| `scripts/up.sh` | Cria o `.env`, gera o `JWT_SECRET` se estiver vazio, sobe os dois serviços e espera ficarem saudáveis |
+| `scripts/startup.sh` | Cria o `.env`, gera o `JWT_SECRET` se estiver vazio, sobe os dois serviços e espera ficarem saudáveis |
 
 ```bash
-scripts/up.sh                # sobe a API e o MongoDB (Swagger em http://127.0.0.1:8000/docs)
+scripts/startup.sh           # sobe a API e o MongoDB (Swagger em http://127.0.0.1:8000/docs)
 docker compose logs -f api   # acompanha os logs da API
 docker compose down          # para os serviços; com -v apaga também os dados do MongoDB
 ```
