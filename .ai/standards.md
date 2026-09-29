@@ -1,7 +1,7 @@
 # Padrões de código e estilo
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: tags e token de acesso temporário.
+> Complementos posteriores ao documento: tags, token de acesso temporário e dependências com uv.
 > Stack e versões: [tech-stack.md](tech-stack.md) · Decisões de arquitetura: [architecture.md](architecture.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Geral
@@ -9,6 +9,14 @@
 - Código em Python, assíncrono de ponta a ponta: rotas `async def` e acesso ao banco pelo `AsyncMongoClient`. Não fazer chamadas síncronas ao banco dentro das rotas.
 - Usar o vocabulário do domínio nos identificadores: `Customer`, `User`, `Application`, `ApiKey`, `AccessToken`, `LogCreate`, `LogDocument`, `LogRead`, `LogLevel`, `TokenResponse`, `LogService`, `TokenService`, `get_application`, `get_application_by_api_key`. Não criar sinônimos.
 - `User` é a pessoa que usa a plataforma de logs, não o usuário final do sistema do cliente. Não misturar os dois conceitos em nomes ou modelos.
+
+## Dependências e configuração
+
+- Dependências só pelo uv: `uv add <pacote>`, ou `uv add --dev <pacote>` para as de teste. Não criar `requirements.txt` nem editar o `uv.lock` à mão.
+- Biblioteca nova entra antes na [stack aprovada](tech-stack.md#stack-aprovada).
+- `pyproject.toml` e `uv.lock` vão no mesmo commit. O build da imagem roda `uv sync --locked` e falha se o lock estiver desatualizado.
+- Configuração vem de variáveis de ambiente (`MONGODB_URI`, `JWT_SECRET`). Segredos não ficam no código nem no `compose.yaml`, e o `.env` não vai para o repositório.
+- O ambiente local sobe com `scripts/startup.sh` (detalhes em [tech-stack.md](tech-stack.md#ambiente-local-docker)).
 
 ## Nomenclatura
 

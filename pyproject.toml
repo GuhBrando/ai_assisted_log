@@ -1,0 +1,13 @@
+[project]
+name = "ai-assisted-log"
+version = "0.1.0"
+description = "API de Logs multi-cliente"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn>=0.54.0",
+    "pydantic[email]>=2.13.5",
+    "pymongo>=4.18.2",
+    "pwdlib[argon2]>=0.3.1",
+    "pyjwt>=2.15.1",
+]
