@@ -28,5 +28,15 @@ services:
       mongo:
         condition: service_healthy
 
+  swagger:
+    image: swaggerapi/swagger-ui:v5.33.0
+    restart: unless-stopped
+    environment:
+      SWAGGER_JSON: /spec/openapi.yaml
+    volumes:
+      - ./docs/api:/spec:ro
+    ports:
+      - "127.0.0.1:${SWAGGER_PORT:-8080}:8080"
+
 volumes:
   mongo-data:

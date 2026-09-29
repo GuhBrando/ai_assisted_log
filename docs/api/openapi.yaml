@@ -1,0 +1,1500 @@
+openapi: 3.1.0
+
+info:
+  title: API de Logs
+  version: 0.1.0
+  summary: Ingestão e consulta de logs das aplicações dos clientes, isolados por cliente.
+  license:
+    name: MIT
+    identifier: MIT
+  description: |
+    Contrato da API de Logs e fonte da verdade para backend, frontend e banco.
+    Toda mudança na API começa neste arquivo (ver `docs/api/README.md`).
+
+    ## Contextos
+
+    | Contexto | Quem chama | Credencial | Endpoints |
+    |---|---|---|---|
+    | Autenticação | Aplicação do cliente | API key (`X-API-Key`) | `POST /auth/token` |
+    | Autenticação | Usuário da plataforma | E-mail e senha | `POST /auth/login` |
+    | Ingestão de logs | Aplicação do cliente | Token de aplicação | `POST /logs` |
+    | Consulta de logs | Usuário (painel) | Token de usuário | `GET /logs`, `GET /logs/{log_id}` |
+    | Cadastro | Usuário (painel) | Token de usuário | `/applications`, `/users`, `/customers/me` |
+    | Cadastro | Empresa nova | Nenhuma | `POST /customers` |
+
+    ## Convenções
+
+    - JSON em `snake_case`, com os mesmos nomes dos modelos Python.
+    - Datas em RFC 3339 com fuso. A API responde sempre em UTC.
+    - Ids são `ObjectId` em texto (24 caracteres hexadecimais).
+    - Corpos de entrada recusam campos desconhecidos com 422; nenhum campo é ignorado em silêncio.
+    - O cliente vem sempre da credencial, nunca de um campo ou parâmetro. Um recurso de outro cliente responde 404, como se não existisse.
+    - Erros no formato Problem Details (RFC 9457), com `Content-Type: application/problem+json`.
+    - Listas vêm dentro de `items`.
+
+    ## Status
+
+    `POST /auth/token` e `POST /logs` seguem o documento do sistema. Os demais endpoints cobrem o escopo
+    (cadastros e painel de consulta), que o documento ainda não detalha: estão marcados como **proposta**
+    até serem validados. Alertas estão no escopo, mas ficam fora do contrato até as regras serem definidas.
+
+servers:
+  - url: http://127.0.0.1:8000
+    description: Ambiente local (scripts/startup.sh)
+
+tags:
+  - name: Autenticação
+    description: Emissão dos tokens de acesso de 1 hora, para aplicações e para usuários.
+  - name: Ingestão de logs
+    description: Envio de logs pelas aplicações dos clientes. Logs são imutáveis e saem do sistema só pela retenção.
+  - name: Consulta de logs
+    description: Painel de consulta. Todo resultado é do cliente do usuário logado.
+  - name: Aplicações
+    description: Sistemas do cliente que enviam logs, com as suas API keys e tags.
+  - name: Usuários
+    description: Pessoas que acessam a plataforma de logs. Não são os usuários finais dos sistemas do cliente.
+  - name: Clientes
+    description: Empresa cliente da plataforma e o prazo de retenção dos seus logs.
+  - name: Operação
+    description: Saúde do serviço.
+
+paths:
+  /auth/token:
+    post:
+      tags: [Autenticação]
+      operationId: issueApplicationToken
+      summary: Troca a API key por um token de aplicação
+      description: |
+        Emite o token que a aplicação usa em `POST /logs` (RN-16).
+
+        - Exige API key válida (RN-02) e cliente ativo (RN-03).
+        - Validade de 1 hora, nunca além da expiração da API key: `exp = min(iat + 3600 s, expires_at da chave)`.
+        - Não existe renovação: perto de expirar, a aplicação pede outro token. Uma aplicação pode ter vários tokens válidos ao mesmo tempo.
+        - O token não é gravado. Revogar a API key impede novos tokens, mas os já emitidos valem até expirar.
+      security:
+        - ApiKey: []
+      responses:
+        '200':
+          description: Token emitido.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NmY4YTFjMmU0YjBhMWIyYzNkNGU1ZjYifQ.sig
+                token_type: bearer
+                expires_in: 3600
+        '401':
+          $ref: '#/components/responses/InvalidApiKey'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+
+  /auth/login:
+    post:
+      tags: [Autenticação]
+      operationId: issueUserToken
+      summary: Login do usuário no painel (proposta)
+      description: |
+        **Proposta.** Troca e-mail e senha por um token de usuário, usado nas rotas do painel.
+
+        - Mesmas regras do token de aplicação: JWT HS256, validade de 1 hora, sem renovação, não é gravado.
+        - O token de usuário não é aceito em `POST /logs`, e o de aplicação não é aceito no painel.
+        - E-mail inexistente e senha errada dão a mesma resposta 401, para não revelar quais e-mails existem.
+        - Usuário de cliente inativo recebe 403.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+            example:
+              email: ana@example.com
+              password: uma-senha-longa
+      responses:
+        '200':
+          description: Token emitido.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NmY4YjExMmU0YjBhMWIyYzNkNGU1ZjgifQ.sig
+                token_type: bearer
+                expires_in: 3600
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /logs:
+    post:
+      tags: [Ingestão de logs]
+      operationId: createLog
+      summary: Envia um log
+      description: |
+        Grava um log da aplicação dona do token.
+
+        - Cliente e aplicação vêm do token, nunca do corpo: `customer_id` no corpo → 422 e nada é gravado (RN-01).
+        - A API preenche `id`, `application_id`, `application_name`, `received_at`, `expire_at` e a lista final de `tags` (RN-07).
+        - Campos sensíveis de `information_data`, como `password` e `cpf`, são mascarados antes de gravar (RN-06).
+        - Tags gravadas: as da aplicação somadas às do log. Numa chave que a aplicação já define, vale a da aplicação (RN-15).
+        - `expire_at = received_at + retention_days` do cliente; depois dessa data o log é apagado (RN-08).
+
+        Ordem das checagens: token (401) → cliente ativo (403) → corpo e tags (422) →
+        tamanho e chaves de `information_data` (413 ou 422) → gravação (201).
+      security:
+        - ApplicationToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogCreate'
+            examples:
+              completo:
+                summary: Todos os campos
+                value:
+                  correlation_id: 3f2b8c1e-9a4d-4c6b-8f1a-2d7e5b9c0a13
+                  level: 4
+                  message: Falha ao autorizar o pagamento
+                  exception: 'PaymentGatewayError: timeout after 30s'
+                  environment: production
+                  information_data:
+                    order_id: A-10293
+                    amount: 149.9
+                    password: senha-que-sera-mascarada
+                  tags:
+                    - 'feature:pix'
+                    - 'region:sa-east-1'
+                  occurred_at: '2026-09-29T14:03:12.481Z'
+              minimo:
+                summary: Só os campos obrigatórios
+                value:
+                  level: 2
+                  message: Pedido criado
+                  environment: production
+                  occurred_at: '2026-09-29T14:03:12.481Z'
+      responses:
+        '201':
+          description: Log gravado.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogRead'
+              examples:
+                logRead:
+                  $ref: '#/components/examples/LogReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+    get:
+      tags: [Consulta de logs]
+      operationId: listLogs
+      summary: Lista os logs do cliente (proposta)
+      description: |
+        **Proposta.** Lista os logs do cliente do usuário, mais recentes primeiro (`occurred_at` decrescente).
+
+        - Só logs do cliente do usuário (RN-09). Não existe parâmetro de cliente.
+        - Os filtros se combinam com E. Repetir `tags` retorna os logs que têm todas as tags.
+        - Paginação por cursor: passe o `next_cursor` da resposta em `cursor` até ele vir `null`.
+      security:
+        - UserToken: []
+      parameters:
+        - name: application_id
+          in: query
+          description: Só logs desta aplicação.
+          schema:
+            $ref: '#/components/schemas/ObjectId'
+        - name: min_level
+          in: query
+          description: 'Só logs a partir deste nível, inclusive (RN-14). Ex.: `3` traz Warning, Error e Critical.'
+          schema:
+            $ref: '#/components/schemas/LogLevel'
+        - name: correlation_id
+          in: query
+          description: Só logs deste fluxo.
+          schema:
+            type: string
+            format: uuid
+        - name: occurred_from
+          in: query
+          description: Início do período, inclusive (`occurred_at >= occurred_from`).
+          schema:
+            type: string
+            format: date-time
+        - name: occurred_to
+          in: query
+          description: Fim do período, exclusivo (`occurred_at < occurred_to`).
+          schema:
+            type: string
+            format: date-time
+        - name: tags
+          in: query
+          description: 'Tags que o log precisa ter, todas (E). Repetir o parâmetro: `?tags=team:checkout&tags=feature:pix`. Passam pela mesma normalização da ingestão.'
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/TagListInput'
+        - name: limit
+          in: query
+          description: Quantidade máxima de logs na página.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          description: Valor de `next_cursor` da página anterior. Opaco para quem chama.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Uma página de logs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogPage'
+              examples:
+                logPage:
+                  $ref: '#/components/examples/LogPageExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /logs/{log_id}:
+    get:
+      tags: [Consulta de logs]
+      operationId: getLog
+      summary: Detalhe de um log (proposta)
+      description: '**Proposta.** Um log do cliente do usuário. Log de outro cliente responde 404 (RN-09).'
+      security:
+        - UserToken: []
+      parameters:
+        - $ref: '#/components/parameters/LogId'
+      responses:
+        '200':
+          description: O log.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogRead'
+              examples:
+                logRead:
+                  $ref: '#/components/examples/LogReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /applications:
+    post:
+      tags: [Aplicações]
+      operationId: createApplication
+      summary: Cadastra uma aplicação (proposta)
+      description: |
+        **Proposta.** Cadastra uma aplicação no cliente do usuário (RN-13). A aplicação nasce sem API keys:
+        crie uma em `POST /applications/{application_id}/api-keys`.
+
+        O nome é único dentro do cliente, sem diferenciar maiúsculas de minúsculas: "Checkout" e "checkout"
+        são a mesma aplicação → 409.
+      security:
+        - UserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreate'
+            example:
+              name: checkout
+              tags:
+                - 'team:checkout'
+      responses:
+        '201':
+          description: Aplicação cadastrada.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+              example:
+                id: 66f8a1c2e4b0a1b2c3d4e5f6
+                name: checkout
+                tags:
+                  - 'team:checkout'
+                api_keys: []
+                created_at: '2026-09-29T13:40:00Z'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+    get:
+      tags: [Aplicações]
+      operationId: listApplications
+      summary: Lista as aplicações do cliente (proposta)
+      description: '**Proposta.** Todas as aplicações do cliente do usuário, com as suas API keys (sem o hash).'
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: Aplicações do cliente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationList'
+              examples:
+                applicationList:
+                  $ref: '#/components/examples/ApplicationListExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+
+  /applications/{application_id}:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationId'
+
+    get:
+      tags: [Aplicações]
+      operationId: getApplication
+      summary: Detalhe de uma aplicação (proposta)
+      description: '**Proposta.** Uma aplicação do cliente do usuário, com as suas API keys (sem o hash).'
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: A aplicação.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+              examples:
+                applicationRead:
+                  $ref: '#/components/examples/ApplicationReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Aplicações]
+      operationId: updateApplication
+      summary: Altera o nome ou as tags de uma aplicação (proposta)
+      description: |
+        **Proposta.** Altera só os campos enviados. `tags` substitui a lista inteira.
+
+        Logs já gravados não mudam: o nome e as tags foram copiados neles na ingestão (ADR-003, ADR-015).
+      security:
+        - UserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationUpdate'
+            example:
+              tags:
+                - 'team:payments'
+      responses:
+        '200':
+          description: Aplicação alterada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /applications/{application_id}/api-keys:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationId'
+
+    post:
+      tags: [Aplicações]
+      operationId: createApiKey
+      summary: Gera uma API key para a aplicação (proposta)
+      description: |
+        **Proposta.** Gera uma API key nova (RN-12, ADR-008).
+
+        - A chave completa (`key`) aparece só nesta resposta. O banco guarda só o hash e o prefixo.
+        - A aplicação pode ter várias chaves; cada uma expira ou é revogada sem afetar as outras.
+        - Sem `expires_at`, a chave não expira.
+      security:
+        - UserToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+            example:
+              expires_at: '2027-03-31T23:59:59Z'
+      responses:
+        '201':
+          description: API key gerada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyCreated'
+              example:
+                key: lx_ab12.4Qm9X2vTzP7sLk3Wc8RbN5yHd1FgJ6eA
+                prefix: lx_ab12
+                expires_at: '2027-03-31T23:59:59Z'
+                revoked_at: null
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /applications/{application_id}/api-keys/{prefix}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationId'
+      - $ref: '#/components/parameters/ApiKeyPrefix'
+
+    post:
+      tags: [Aplicações]
+      operationId: revokeApiKey
+      summary: Revoga uma API key (proposta)
+      description: |
+        **Proposta.** Revoga a chave: ela deixa de emitir tokens na hora (RN-02). Os tokens já emitidos
+        com ela continuam válidos até expirar, no máximo 1 hora (RN-16).
+
+        Idempotente: revogar uma chave já revogada devolve 200 com o `revoked_at` original.
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: Chave revogada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyRead'
+              example:
+                prefix: lx_ab12
+                expires_at: '2027-03-31T23:59:59Z'
+                revoked_at: '2026-09-29T15:10:00Z'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users:
+    post:
+      tags: [Usuários]
+      operationId: createUser
+      summary: Cadastra um usuário no cliente (proposta)
+      description: |
+        **Proposta.** Cadastra um usuário no cliente do usuário logado (RN-11).
+
+        - O e-mail é único em toda a plataforma: e-mail já cadastrado → 409.
+        - A senha é guardada só como hash (pwdlib + Argon2) e nunca volta nas respostas.
+      security:
+        - UserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+            example:
+              name: Bruno Exemplo
+              email: bruno@example.com
+              password: outra-senha-longa
+      responses:
+        '201':
+          description: Usuário cadastrado.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+              example:
+                id: 66f8b2a4e4b0a1b2c3d4e5f9
+                name: Bruno Exemplo
+                email: bruno@example.com
+                created_at: '2026-09-29T13:50:00Z'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+    get:
+      tags: [Usuários]
+      operationId: listUsers
+      summary: Lista os usuários do cliente (proposta)
+      description: '**Proposta.** Todos os usuários do cliente do usuário logado.'
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: Usuários do cliente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+              examples:
+                userList:
+                  $ref: '#/components/examples/UserListExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+
+  /users/me:
+    get:
+      tags: [Usuários]
+      operationId: getCurrentUser
+      summary: Usuário logado (proposta)
+      description: '**Proposta.** O usuário dono do token.'
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: O usuário logado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+              examples:
+                userRead:
+                  $ref: '#/components/examples/UserReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+
+  /users/{user_id}:
+    get:
+      tags: [Usuários]
+      operationId: getUser
+      summary: Detalhe de um usuário (proposta)
+      description: '**Proposta.** Um usuário do cliente do usuário logado. Usuário de outro cliente responde 404.'
+      security:
+        - UserToken: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: O usuário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+              examples:
+                userRead:
+                  $ref: '#/components/examples/UserReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /customers:
+    post:
+      tags: [Clientes]
+      operationId: registerCustomer
+      summary: Cadastra uma empresa cliente e o seu primeiro usuário (proposta)
+      description: |
+        **Proposta.** Cadastro de uma empresa nova na plataforma, junto com o primeiro usuário, que depois
+        faz login em `POST /auth/login`. O cliente nasce ativo (`is_active: true`).
+
+        E-mail do usuário já cadastrado → 409, e nada é gravado.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRegistration'
+            example:
+              customer:
+                name: Loja Exemplo
+                retention_days: 30
+              user:
+                name: Ana Exemplo
+                email: ana@example.com
+                password: uma-senha-longa
+      responses:
+        '201':
+          description: Cliente e usuário cadastrados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRegistrationResult'
+              examples:
+                customerRegistrationResult:
+                  $ref: '#/components/examples/CustomerRegistrationResultExample'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /customers/me:
+    get:
+      tags: [Clientes]
+      operationId: getCurrentCustomer
+      summary: Cliente do usuário logado (proposta)
+      description: '**Proposta.** O cliente ao qual o usuário logado pertence.'
+      security:
+        - UserToken: []
+      responses:
+        '200':
+          description: O cliente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRead'
+              examples:
+                customerRead:
+                  $ref: '#/components/examples/CustomerReadExample'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+
+    patch:
+      tags: [Clientes]
+      operationId: updateCurrentCustomer
+      summary: Altera o nome ou a retenção do cliente (proposta)
+      description: |
+        **Proposta.** Altera só os campos enviados.
+
+        Um `retention_days` novo vale só para os logs recebidos depois da mudança: o `expire_at` de cada log
+        é calculado na gravação e não muda (ADR-004). `is_active` não é alterado por esta API.
+      security:
+        - UserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdate'
+            example:
+              retention_days: 7
+      responses:
+        '200':
+          description: Cliente alterado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerRead'
+        '401':
+          $ref: '#/components/responses/InvalidBearerToken'
+        '403':
+          $ref: '#/components/responses/CustomerInactive'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /health:
+    get:
+      tags: [Operação]
+      operationId: getHealth
+      summary: Saúde da API e do MongoDB
+      description: Faz um `ping` no MongoDB. É o healthcheck do container da API.
+      security: []
+      responses:
+        '200':
+          description: API e MongoDB no ar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                mongodb: up
+        '503':
+          description: O MongoDB não respondeu em 3 segundos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: unavailable
+                mongodb: down
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key da aplicação. Aceita só em `POST /auth/token` (RN-12).
+    ApplicationToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token de aplicação, emitido em `POST /auth/token`. Aceito só em `POST /logs`.
+        JWT HS256 de 1 hora com as claims `sub` (id da aplicação), `iat`, `exp` e `jti`.
+    UserToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        **Proposta.** Token de usuário, emitido em `POST /auth/login`. Aceito só nas rotas do painel.
+        JWT HS256 de 1 hora com as claims `sub` (id do usuário), `iat`, `exp` e `jti`.
+
+  parameters:
+    ApplicationId:
+      name: application_id
+      in: path
+      required: true
+      description: Id da aplicação.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+    ApiKeyPrefix:
+      name: prefix
+      in: path
+      required: true
+      description: Prefixo da API key, que a identifica dentro da aplicação.
+      schema:
+        type: string
+        examples:
+          - lx_ab12
+    LogId:
+      name: log_id
+      in: path
+      required: true
+      description: Id do log.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      description: Id do usuário.
+      schema:
+        $ref: '#/components/schemas/ObjectId'
+
+  headers:
+    Location:
+      description: Caminho do recurso criado.
+      schema:
+        type: string
+        format: uri-reference
+        examples:
+          - /logs/66f96a0de4b0a1b2c3d4e5f7
+    CacheControlNoStore:
+      description: A resposta traz uma credencial e não pode ficar em cache.
+      schema:
+        type: string
+        enum: [no-store]
+    WwwAuthenticateBearer:
+      description: Indica que a rota espera um token Bearer.
+      schema:
+        type: string
+        examples:
+          - Bearer
+
+  responses:
+    InvalidApiKey:
+      description: API key ausente, inexistente, expirada ou revogada (RN-02).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            detail: API key ausente, inválida, expirada ou revogada.
+    InvalidCredentials:
+      description: E-mail ou senha incorretos.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            detail: E-mail ou senha incorretos.
+    InvalidBearerToken:
+      description: Token ausente, inválido ou expirado, ou token do tipo errado para a rota.
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WwwAuthenticateBearer'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            detail: Token ausente, inválido ou expirado.
+    CustomerInactive:
+      description: O cliente dono da credencial está inativo (RN-03).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Forbidden
+            status: 403
+            detail: O cliente está inativo.
+    NotFound:
+      description: O recurso não existe ou é de outro cliente (RN-09).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404
+            detail: Recurso não encontrado.
+    Conflict:
+      description: Viola uma regra de unicidade, como e-mail de usuário ou nome de aplicação já cadastrados.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Conflict
+            status: 409
+            detail: Já existe um usuário com este e-mail.
+    PayloadTooLarge:
+      description: '`information_data` acima do limite de tamanho (RN-05).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Content Too Large
+            status: 413
+            detail: information_data passa do limite de 64 KB.
+    ValidationFailed:
+      description: Corpo ou parâmetro inválido, campo desconhecido ou regra de formato violada.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+          example:
+            type: about:blank
+            title: Unprocessable Content
+            status: 422
+            detail: A requisição tem campos inválidos.
+            errors:
+              - loc: [body, customer_id]
+                msg: Extra inputs are not permitted
+                type: extra_forbidden
+              - loc: [body, tags, 0]
+                msg: A tag precisa estar no formato chave:valor.
+                type: value_error
+
+  examples:
+    LogReadExample:
+      summary: Log gravado, com os dados sensíveis mascarados
+      value:
+        id: 66f96a0de4b0a1b2c3d4e5f7
+        application_id: 66f8a1c2e4b0a1b2c3d4e5f6
+        application_name: checkout
+        correlation_id: 3f2b8c1e-9a4d-4c6b-8f1a-2d7e5b9c0a13
+        level: 4
+        message: Falha ao autorizar o pagamento
+        exception: 'PaymentGatewayError: timeout after 30s'
+        environment: production
+        information_data:
+          order_id: A-10293
+          amount: 149.9
+          password: '***'
+        tags:
+          - 'team:checkout'
+          - 'feature:pix'
+          - 'region:sa-east-1'
+        occurred_at: '2026-09-29T14:03:12.481Z'
+        received_at: '2026-09-29T14:03:12.902Z'
+        expire_at: '2026-10-29T14:03:12.902Z'
+    ApplicationReadExample:
+      summary: Aplicação com uma API key
+      value:
+        id: 66f8a1c2e4b0a1b2c3d4e5f6
+        name: checkout
+        tags:
+          - 'team:checkout'
+        api_keys:
+          - prefix: lx_ab12
+            expires_at: '2027-03-31T23:59:59Z'
+            revoked_at: null
+        created_at: '2026-09-29T13:40:00Z'
+    UserReadExample:
+      summary: Usuário
+      value:
+        id: 66f8b112e4b0a1b2c3d4e5f8
+        name: Ana Exemplo
+        email: ana@example.com
+        created_at: '2026-09-29T13:30:00Z'
+    CustomerReadExample:
+      summary: Cliente
+      value:
+        id: 66f8b0f0e4b0a1b2c3d4e5f5
+        name: Loja Exemplo
+        is_active: true
+        retention_days: 30
+        created_at: '2026-09-29T13:30:00Z'
+
+    LogPageExample:
+      summary: Página de logs
+      value:
+        items:
+          - id: 66f96a0de4b0a1b2c3d4e5f7
+            application_id: 66f8a1c2e4b0a1b2c3d4e5f6
+            application_name: checkout
+            correlation_id: 3f2b8c1e-9a4d-4c6b-8f1a-2d7e5b9c0a13
+            level: 4
+            message: Falha ao autorizar o pagamento
+            exception: 'PaymentGatewayError: timeout after 30s'
+            environment: production
+            information_data:
+              order_id: A-10293
+              amount: 149.9
+              password: '***'
+            tags:
+              - 'team:checkout'
+              - 'feature:pix'
+              - 'region:sa-east-1'
+            occurred_at: '2026-09-29T14:03:12.481Z'
+            received_at: '2026-09-29T14:03:12.902Z'
+            expire_at: '2026-10-29T14:03:12.902Z'
+        next_cursor: eyJvY2N1cnJlZF9hdCI6IjIwMjYtMDktMjlUMTQ6MDM6MTIuNDgxWiJ9
+    ApplicationListExample:
+      summary: Aplicações do cliente
+      value:
+        items:
+          - id: 66f8a1c2e4b0a1b2c3d4e5f6
+            name: checkout
+            tags:
+              - 'team:checkout'
+            api_keys:
+              - prefix: lx_ab12
+                expires_at: '2027-03-31T23:59:59Z'
+                revoked_at: null
+            created_at: '2026-09-29T13:40:00Z'
+    UserListExample:
+      summary: Usuários do cliente
+      value:
+        items:
+          - id: 66f8b112e4b0a1b2c3d4e5f8
+            name: Ana Exemplo
+            email: ana@example.com
+            created_at: '2026-09-29T13:30:00Z'
+    CustomerRegistrationResultExample:
+      summary: Cliente e primeiro usuário cadastrados
+      value:
+        customer:
+          id: 66f8b0f0e4b0a1b2c3d4e5f5
+          name: Loja Exemplo
+          is_active: true
+          retention_days: 30
+          created_at: '2026-09-29T13:30:00Z'
+        user:
+          id: 66f8b112e4b0a1b2c3d4e5f8
+          name: Ana Exemplo
+          email: ana@example.com
+          created_at: '2026-09-29T13:30:00Z'
+
+  schemas:
+    ObjectId:
+      type: string
+      pattern: '^[0-9a-f]{24}$'
+      description: Id no formato `ObjectId` do MongoDB, em texto.
+      examples:
+        - 66f8a1c2e4b0a1b2c3d4e5f6
+
+    LogLevel:
+      type: integer
+      enum: [0, 1, 2, 3, 4, 5]
+      x-enum-varnames: [TRACE, DEBUG, INFORMATION, WARNING, ERROR, CRITICAL]
+      description: |
+        Severidade do log, gravada como número (ADR-011).
+
+        | Valor | Nome |
+        |---|---|
+        | 0 | TRACE |
+        | 1 | DEBUG |
+        | 2 | INFORMATION |
+        | 3 | WARNING |
+        | 4 | ERROR |
+        | 5 | CRITICAL |
+      examples:
+        - 4
+
+    TagInput:
+      type: string
+      minLength: 1
+      description: |
+        Tag no formato `chave:valor`, separados pelo primeiro `:` (RN-15).
+
+        A API remove os espaços das pontas e converte para minúsculas antes de validar: `" Feature:PIX"`
+        vira `feature:pix`. Depois disso, a chave só tem letras minúsculas, dígitos, `_` e `-`; o valor
+        não é vazio nem tem espaços; a tag tem até 100 caracteres. Fora disso → 422.
+
+        Tags não são mascaradas e ficam indexadas: nunca coloque dado pessoal numa tag.
+      examples:
+        - 'feature:pix'
+
+    TagListInput:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/TagInput'
+      description: Até 20 tags. Repetidas, depois de normalizadas, são descartadas.
+
+    Tag:
+      type: string
+      pattern: '^[a-z0-9_-]+:\S+$'
+      maxLength: 100
+      description: Tag normalizada, `chave:valor` em minúsculas.
+      examples:
+        - 'team:checkout'
+
+    LogCreate:
+      type: object
+      additionalProperties: false
+      description: O log como a aplicação envia. Campos desconhecidos, como `customer_id`, são recusados com 422.
+      required: [level, message, environment, occurred_at]
+      properties:
+        correlation_id:
+          type: [string, 'null']
+          format: uuid
+          description: Liga os logs de um mesmo fluxo.
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        message:
+          type: string
+          minLength: 1
+        exception:
+          type: [string, 'null']
+          description: Tipo, mensagem ou stack trace da exceção, quando houver.
+        environment:
+          type: string
+          minLength: 1
+          examples:
+            - production
+        information_data:
+          type: [object, 'null']
+          additionalProperties: true
+          description: |
+            O objeto que a aplicação estava manipulando, livre (RN-05, RN-06).
+
+            - Tamanho máximo: 64 KB (valor em aberto). Acima disso → 413.
+            - Chaves com `$` ou `.`, em qualquer nível, são recusadas com 422 (ex.: `$where`, `a.b`).
+            - Campos sensíveis, como `password` e `cpf`, são mascarados antes de gravar.
+        tags:
+          $ref: '#/components/schemas/TagListInput'
+          default: []
+          description: Tags deste log. Somadas às da aplicação na gravação; numa chave que a aplicação já define, vale a da aplicação.
+        occurred_at:
+          type: string
+          format: date-time
+          description: Quando o evento aconteceu na aplicação, com fuso.
+
+    LogRead:
+      type: object
+      description: O log como a API devolve.
+      required:
+        - id
+        - application_id
+        - application_name
+        - correlation_id
+        - level
+        - message
+        - exception
+        - environment
+        - information_data
+        - tags
+        - occurred_at
+        - received_at
+        - expire_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ObjectId'
+        application_id:
+          $ref: '#/components/schemas/ObjectId'
+        application_name:
+          type: string
+          description: Nome da aplicação quando o log foi gravado.
+        correlation_id:
+          type: [string, 'null']
+          format: uuid
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        message:
+          type: string
+        exception:
+          type: [string, 'null']
+        environment:
+          type: string
+        information_data:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Com os campos sensíveis já mascarados.
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          description: Lista final, com as tags da aplicação somadas às do log.
+        occurred_at:
+          type: string
+          format: date-time
+          description: Quando o evento aconteceu na aplicação.
+        received_at:
+          type: string
+          format: date-time
+          description: Quando o log chegou à API.
+        expire_at:
+          type: string
+          format: date-time
+          description: Depois desta data o log é apagado. É `received_at` somado ao `retention_days` do cliente.
+
+    LogPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogRead'
+        next_cursor:
+          type: [string, 'null']
+          description: Cursor da próxima página. `null` quando não há mais logs.
+
+    TokenResponse:
+      type: object
+      description: Nomes do OAuth 2.0.
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: JWT assinado com HS256.
+        token_type:
+          type: string
+          enum: [bearer]
+        expires_in:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: Segundos até o token expirar. Menor que 3600 quando a API key expira antes de 1 hora.
+
+    UserLogin:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          writeOnly: true
+
+    ApplicationCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Único dentro do cliente, sem diferenciar maiúsculas de minúsculas.
+        tags:
+          $ref: '#/components/schemas/TagListInput'
+          default: []
+          description: Tags que valem para todos os logs da aplicação.
+
+    ApplicationUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+        tags:
+          $ref: '#/components/schemas/TagListInput'
+          description: Substitui a lista inteira. Não altera os logs já gravados.
+
+    ApplicationRead:
+      type: object
+      required: [id, name, tags, api_keys, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        api_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyRead'
+        created_at:
+          type: string
+          format: date-time
+
+    ApplicationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationRead'
+
+    ApiKeyCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Precisa estar no futuro. Sem valor, a chave não expira.
+
+    ApiKeyRead:
+      type: object
+      description: API key sem o segredo. O hash nunca sai da API.
+      required: [prefix, expires_at, revoked_at]
+      properties:
+        prefix:
+          type: string
+          description: Prefixo curto que identifica a chave.
+          examples:
+            - lx_ab12
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+
+    ApiKeyCreated:
+      description: API key recém-gerada, com o segredo.
+      allOf:
+        - $ref: '#/components/schemas/ApiKeyRead'
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: A chave completa. Aparece só nesta resposta; guarde-a em lugar seguro.
+
+    UserCreate:
+      type: object
+      additionalProperties: false
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          description: Único em toda a plataforma.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+          maxLength: 128
+
+    UserRead:
+      type: object
+      required: [id, name, email, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRead'
+
+    CustomerCreate:
+      type: object
+      additionalProperties: false
+      required: [name, retention_days]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        retention_days:
+          type: integer
+          minimum: 1
+          description: Por quantos dias os logs do cliente ficam guardados (RN-08).
+
+    CustomerRegistration:
+      type: object
+      additionalProperties: false
+      required: [customer, user]
+      properties:
+        customer:
+          $ref: '#/components/schemas/CustomerCreate'
+        user:
+          $ref: '#/components/schemas/UserCreate'
+
+    CustomerRegistrationResult:
+      type: object
+      required: [customer, user]
+      properties:
+        customer:
+          $ref: '#/components/schemas/CustomerRead'
+        user:
+          $ref: '#/components/schemas/UserRead'
+
+    CustomerUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+        retention_days:
+          type: integer
+          minimum: 1
+          description: Vale só para os logs recebidos depois da mudança.
+
+    CustomerRead:
+      type: object
+      required: [id, name, is_active, retention_days, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+        is_active:
+          type: boolean
+        retention_days:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Health:
+      type: object
+      required: [status, mongodb]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        mongodb:
+          type: string
+          enum: [up, down]
+
+    Problem:
+      type: object
+      description: Erro no formato Problem Details (RFC 9457).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+
+    ValidationProblem:
+      description: Problem Details com a lista de campos inválidos, no formato dos erros do Pydantic.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required: [loc, msg, type]
+                properties:
+                  loc:
+                    type: array
+                    items:
+                      type: [string, integer]
+                    description: 'Caminho do campo, ex.: `["body", "tags", 0]`.'
+                  msg:
+                    type: string
+                  type:
+                    type: string

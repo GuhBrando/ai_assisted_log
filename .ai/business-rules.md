@@ -190,6 +190,8 @@ Tags são uma dimensão extra de filtro, no formato `chave:valor` (ex.: `team:pa
 
 Ordem das checagens em `POST /logs`: token (401) → cliente ativo (403) → corpo e tags (422) → tamanho e chaves de `information_data` (413 ou 422) → gravação (201).
 
+Códigos dos demais endpoints e formato do corpo de erro: [`docs/api/openapi.yaml`](../docs/api/openapi.yaml).
+
 ## Casos de aceitação
 
 ### Token de acesso
@@ -248,7 +250,7 @@ Do documento do sistema:
 
 Levantados ao separar o documento nestes arquivos:
 
-- [ ] Convenção de nomes do JSON da API: o documento cita `correlationId`/`informationData` na visão geral e `customer_id` nos exemplos de payload.
+- [x] Convenção de nomes do JSON da API: `snake_case` ([ADR-018](architecture.md#adr-018--json-da-api-em-snake_case)).
 - [ ] Algoritmo de hash das API keys. Precisa ser determinístico para a busca pelo índice `apiKeys.keyHash`.
 - [ ] Regras do painel de consulta de logs e dos alertas: estão no escopo, mas o documento ainda não as detalha.
 
@@ -256,3 +258,14 @@ Dos complementos (tags e token):
 
 - [ ] Limites de tags: até 20 por log e por aplicação, com até 100 caracteres cada?
 - [ ] Revogar uma API key deve derrubar na hora os tokens já emitidos com ela? Hoje eles valem até expirar (no máximo 1 hora); derrubar na hora exigiria guardar os tokens ou uma lista de revogados.
+
+Propostas do [contrato da API](../docs/api/openapi.yaml), a validar:
+
+- [ ] Login de usuários: `POST /auth/login` com e-mail e senha devolve um token de usuário de 1 hora, nas mesmas regras do token de aplicação. Como diferenciar os dois tokens (sugestão: claim `aud`)?
+- [ ] Usuário de cliente inativo: o contrato propõe 403 no login e em todas as rotas do painel, como na ingestão (RN-03).
+- [ ] Quem cadastra clientes? O contrato propõe auto-cadastro sem credencial (`POST /customers`, com o primeiro usuário). E quem ativa ou desativa um cliente (`is_active`)? Hoje nenhuma rota altera esse campo.
+- [ ] Nome de aplicação único dentro do cliente, sem diferenciar maiúsculas de minúsculas (409), com índice único `{ customerId: 1, name: 1 }`.
+- [ ] Prefixo da API key único dentro da aplicação, porque identifica a chave na revogação.
+- [ ] Política de senha: o contrato propõe de 8 a 128 caracteres.
+- [ ] Paginação de `GET /logs` por cursor, com até 100 logs por página (padrão 50).
+- [ ] Formato do valor mascarado em `information_data` (os exemplos usam `***`).
