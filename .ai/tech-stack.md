@@ -1,7 +1,7 @@
 # Tech stack
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: PyJWT, para o token de acesso temporário; uv, Uvicorn e o ambiente local em Docker.
+> Complementos posteriores ao documento: PyJWT, para o token de acesso temporário; uv, Uvicorn e o ambiente local em Docker; contrato OpenAPI com Swagger UI.
 > Padrões de código: [standards.md](standards.md) · Decisões de arquitetura: [architecture.md](architecture.md).
 
 Só as tecnologias abaixo estão aprovadas. Adicionar uma biblioteca nova exige registrá-la aqui, e em [architecture.md](architecture.md) se ela mudar uma decisão.
@@ -21,7 +21,8 @@ Só as tecnologias abaixo estão aprovadas. Adicionar uma biblioteca nova exige 
 | Senhas | pwdlib + Argon2 (`pwdlib[argon2]`) | 0.3.1 | Hash das senhas dos usuários da plataforma |
 | Tokens de acesso | PyJWT | 2.15.1 | Emitir e validar o JWT de 1 hora das aplicações (HS256) |
 | Testes | pytest, httpx, Testcontainers (MongoDB) | a definir | Testes de endpoint contra um MongoDB real em Docker |
-| Containers | Docker + Docker Compose v2 | — | Sobe a API e o MongoDB no ambiente local |
+| Containers | Docker + Docker Compose v2 | — | Sobe a API, o MongoDB e o Swagger UI no ambiente local |
+| Contrato da API | OpenAPI + Swagger UI (imagem `swaggerapi/swagger-ui`) | 3.1 / v5.33.0 | Contrato em `docs/api/openapi.yaml`, visualizado no Swagger UI |
 
 As versões das bibliotecas Python são as travadas no `uv.lock`; o `pyproject.toml` declara só o mínimo aceito (`>=`). Para atualizar uma biblioteca, rodar `uv lock --upgrade-package <pacote>` e atualizar esta tabela no mesmo commit. A versão mínima do PyMongo é a primeira em que a API assíncrona saiu do beta.
 
@@ -52,18 +53,19 @@ client = AsyncMongoClient(uri, uuidRepresentation="standard", tz_aware=True)
 | Arquivo | Papel |
 |---|---|
 | `Dockerfile` | Imagem da API: `python:3.14-slim` + uv 0.12.20. Instala com `uv sync --locked --no-dev` e roda com um usuário sem root |
-| `compose.yaml` | Serviços `api` e `mongo` (`mongo:8.0`, volume `mongo-data`), com healthcheck. Portas publicadas só em `127.0.0.1` |
-| `.env.example` | Modelo do `.env`: `API_PORT` (padrão 8000), `MONGO_PORT` (padrão 27017) e `JWT_SECRET` |
-| `scripts/startup.sh` | Cria o `.env`, gera o `JWT_SECRET` se estiver vazio, sobe os dois serviços e espera ficarem saudáveis |
+| `compose.yaml` | Serviços `api` e `mongo` (`mongo:8.0`, volume `mongo-data`), com healthcheck, e `swagger` (Swagger UI com `docs/api/openapi.yaml`). Portas publicadas só em `127.0.0.1` |
+| `.env.example` | Modelo do `.env`: `API_PORT` (padrão 8000), `MONGO_PORT` (padrão 27017), `SWAGGER_PORT` (padrão 8080) e `JWT_SECRET` |
+| `scripts/startup.sh` | Cria o `.env`, gera o `JWT_SECRET` se estiver vazio, sobe os serviços e espera ficarem no ar |
 
 ```bash
-scripts/startup.sh           # sobe a API e o MongoDB (Swagger em http://127.0.0.1:8000/docs)
+scripts/startup.sh           # sobe a API, o MongoDB e o Swagger UI do contrato (http://127.0.0.1:8080)
 docker compose logs -f api   # acompanha os logs da API
 docker compose down          # para os serviços; com -v apaga também os dados do MongoDB
 ```
 
 - A API lê `MONGODB_URI` (o `compose.yaml` aponta para `mongodb://mongo:27017/log_api`) e `JWT_SECRET`.
 - `GET /health` faz um `ping` no MongoDB: 200 se ele responde, 503 se não. É o healthcheck do container da API.
+- O Swagger UI em http://127.0.0.1:8080 mostra o contrato (`docs/api/openapi.yaml`); o de http://127.0.0.1:8000/docs é o gerado pelo FastAPI a partir do código.
 - O MongoDB local roda sem autenticação. Serve só para desenvolvimento; por isso a porta fica presa em `127.0.0.1`.
 
 ## Não usar

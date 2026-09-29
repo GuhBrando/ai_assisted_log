@@ -1,7 +1,7 @@
 # Arquitetura
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: tags (ADR-015) e token de acesso temporário (ADR-016).
+> Complementos posteriores ao documento: tags (ADR-015), token de acesso temporário (ADR-016) e contrato da API (ADR-017 a ADR-019).
 > Stack e versões: [tech-stack.md](tech-stack.md) · Padrões de código: [standards.md](standards.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Visão geral
@@ -62,6 +62,23 @@ App do cliente
 13. A API responde **201 Created** com o `LogRead` (id do log).
 14. Depois de `expireAt`, o monitor TTL do MongoDB apaga o documento.
 
+## Contrato da API
+
+O contrato fica em [`docs/api/openapi.yaml`](../docs/api/openapi.yaml) (OpenAPI 3.1) e é a fonte da verdade da API (ADR-017). Guia por time em [`docs/api/README.md`](../docs/api/README.md).
+
+| Contexto | Endpoints | Credencial | Status |
+|---|---|---|---|
+| Autenticação | `POST /auth/token` | API key (`X-API-Key`) | Documento do sistema |
+| Autenticação | `POST /auth/login` | E-mail e senha | Proposta |
+| Ingestão de logs | `POST /logs` | Token de aplicação | Documento do sistema |
+| Consulta de logs | `GET /logs`, `GET /logs/{log_id}` | Token de usuário | Proposta |
+| Aplicações | `/applications`, `/applications/{application_id}/api-keys`, `.../api-keys/{prefix}/revoke` | Token de usuário | Proposta |
+| Usuários | `/users`, `/users/me`, `/users/{user_id}` | Token de usuário | Proposta |
+| Clientes | `POST /customers` (sem credencial), `/customers/me` | Token de usuário | Proposta |
+| Operação | `GET /health` | Nenhuma | Implementado |
+
+Os endpoints marcados como proposta cobrem o escopo (cadastros e painel), que o documento não detalha. As decisões que eles pedem estão em [Pontos em aberto](business-rules.md#pontos-em-aberto).
+
 ## Persistência (MongoDB)
 
 Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys ficam embutidas no array `apiKeys` de cada documento de `applications`; as demais relações são referências por `ObjectId`. Como o MongoDB não tem chave estrangeira, a integridade é garantida pela API. Tokens de acesso não são gravados (ADR-016).
@@ -106,6 +123,9 @@ Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys fi
 | [014](#adr-014--testes-contra-mongodb-real) | Testes contra MongoDB real |
 | [015](#adr-015--tags-como-dimensão-de-filtro) | Tags como dimensão de filtro |
 | [016](#adr-016--token-de-acesso-temporário-jwt-de-1-hora) | Token de acesso temporário (JWT de 1 hora) |
+| [017](#adr-017--contrato-openapi-como-fonte-da-verdade) | Contrato OpenAPI como fonte da verdade |
+| [018](#adr-018--json-da-api-em-snake_case) | JSON da API em `snake_case` |
+| [019](#adr-019--erros-no-formato-problem-details-rfc-9457) | Erros no formato Problem Details (RFC 9457) |
 
 Todas com status **Aceita**.
 
@@ -208,3 +228,23 @@ Todas com status **Aceita**.
   - Desativar o cliente vale na hora, porque o cliente é checado em cada envio.
   - O segredo de assinatura (`JWT_SECRET`) vira uma credencial crítica da plataforma. Trocá-lo invalida todos os tokens emitidos.
   - A aplicação cliente precisa pedir um novo token antes de o atual expirar.
+
+### ADR-017 — Contrato OpenAPI como fonte da verdade
+
+- **Contexto:** backend, frontend e banco precisam desenvolver em paralelo, antes de a API existir.
+- **Decisão:** o contrato é escrito primeiro, à mão, em `docs/api/openapi.yaml` (OpenAPI 3.1). Mudança de endpoint, campo ou código de resposta começa no contrato, no mesmo PR do código. O `compose.yaml` sobe um Swagger UI com ele.
+- **Alternativa descartada:** usar só o OpenAPI que o FastAPI gera do código. Ele só existe depois da implementação, e o que o código faz vira o contrato sem revisão.
+- **Consequências:** o OpenAPI gerado pelo FastAPI (`/docs`) precisa bater com o contrato; quando divergirem, vale o contrato. O frontend gera tipos e mocks a partir dele.
+
+### ADR-018 — JSON da API em `snake_case`
+
+- **Contexto:** o documento do sistema usava `correlationId` na visão geral e `customer_id` nos exemplos de payload.
+- **Decisão:** corpos, parâmetros e respostas em `snake_case`, com os mesmos nomes dos atributos Python.
+- **Motivo:** os modelos Pydantic já usam `snake_case`, então não há aliases para manter; os exemplos do documento e o `TokenResponse` (OAuth 2.0) já estavam assim.
+- **Consequências:** o `camelCase` fica só nos documentos do MongoDB, convertido na camada de persistência.
+
+### ADR-019 — Erros no formato Problem Details (RFC 9457)
+
+- **Decisão:** toda resposta de erro usa `application/problem+json` com `type`, `title`, `status` e `detail`. O 422 acrescenta `errors`, uma lista com `loc`, `msg` e `type`, no formato dos erros do Pydantic.
+- **Motivo:** um formato padrão e único de erro para todos os endpoints, que o frontend trata em um lugar só.
+- **Consequências:** o backend troca os handlers de erro padrão do FastAPI, que respondem `{"detail": ...}`.

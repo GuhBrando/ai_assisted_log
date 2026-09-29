@@ -1,7 +1,7 @@
 # Padrões de código e estilo
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: tags, token de acesso temporário e dependências com uv.
+> Complementos posteriores ao documento: tags, token de acesso temporário, dependências com uv e contrato da API.
 > Stack e versões: [tech-stack.md](tech-stack.md) · Decisões de arquitetura: [architecture.md](architecture.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Geral
@@ -23,6 +23,7 @@
 | Onde | Convenção | Exemplo |
 |---|---|---|
 | Atributos Python e modelos Pydantic | `snake_case` | `correlation_id`, `information_data`, `occurred_at` |
+| JSON da API (corpos, parâmetros e respostas) | `snake_case`, igual aos atributos Python ([ADR-018](architecture.md#adr-018--json-da-api-em-snake_case)) | `occurred_at`, `min_level` |
 | Campos nos documentos MongoDB | `camelCase` | `customerId`, `occurredAt`, `expireAt`, `apiKeys.keyHash` |
 | Coleções MongoDB | plural, minúsculas | `customers`, `users`, `applications`, `logs` |
 | Classes | `PascalCase` | `LogDocument`, `ApiKey` |
@@ -31,7 +32,11 @@
 
 A conversão `snake_case` ↔ `camelCase` fica na camada de persistência. O resto do código usa só os nomes Python.
 
-> A convenção de nomes do JSON da API ainda não foi definida. Ver [Pontos em aberto](business-rules.md#pontos-em-aberto).
+## Contrato da API
+
+- [`docs/api/openapi.yaml`](../docs/api/openapi.yaml) é a fonte da verdade ([ADR-017](architecture.md#adr-017--contrato-openapi-como-fonte-da-verdade)). Mudou endpoint, campo ou código de resposta? Primeiro o contrato, no mesmo PR do código.
+- Os modelos Pydantic têm os mesmos nomes e campos dos schemas do contrato.
+- Rodar o lint do contrato antes do PR (comando em [`docs/api/README.md`](../docs/api/README.md#validar-o-contrato)).
 
 ## Camadas e responsabilidades
 
@@ -92,7 +97,9 @@ A conversão `snake_case` ↔ `camelCase` fica na camada de persistência. O res
 
 ## Erros HTTP
 
-Usar os códigos da tabela [Códigos de resposta](business-rules.md#códigos-de-resposta). Não criar códigos diferentes para os mesmos casos.
+Usar os códigos da tabela [Códigos de resposta](business-rules.md#códigos-de-resposta) e do contrato. Não criar códigos diferentes para os mesmos casos.
+
+O corpo de erro segue o Problem Details (RFC 9457), com `Content-Type: application/problem+json` ([ADR-019](architecture.md#adr-019--erros-no-formato-problem-details-rfc-9457)). No 422, a lista `errors` repete o formato de `ValidationError.errors()` do Pydantic (`loc`, `msg`, `type`).
 
 ## Testes
 
