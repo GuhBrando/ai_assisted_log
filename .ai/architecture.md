@@ -1,78 +1,96 @@
 # Arquitetura
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
+> Complementos posteriores ao documento: tags (ADR-015) e token de acesso temporário (ADR-016).
 > Stack e versões: [tech-stack.md](tech-stack.md) · Padrões de código: [standards.md](standards.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Visão geral
 
-API multi-cliente que recebe, por um único endpoint (`POST /logs`), os logs enviados pelas aplicações de qualquer cliente e os guarda isolados por cliente. O cliente é identificado pela API key enviada no cabeçalho `X-API-Key`, nunca por um campo do corpo.
+API multi-cliente que recebe, por um único endpoint (`POST /logs`), os logs enviados pelas aplicações de qualquer cliente e os guarda isolados por cliente.
 
-Escopo desta versão: ingestão de logs, cadastro de clientes, aplicações e usuários, retenção automática por cliente, painel de consulta de logs e alertas.
+A aplicação troca a sua API key por um token de acesso de 1 hora (`POST /auth/token`) e envia os logs com esse token no cabeçalho `Authorization: Bearer`. O cliente e a aplicação donos do log vêm dessa credencial, nunca de um campo do corpo.
+
+Escopo desta versão: ingestão de logs, cadastro de clientes, aplicações e usuários, retenção automática por cliente, painel de consulta de logs e alertas. Complementos: tags em aplicações e logs, token de acesso de 1 hora.
 
 ## Componentes
 
 ```
-App do cliente ──POST /logs (X-API-Key + JSON)──▶ FastAPI
-                                                   │
-                                                   ├─▶ get_application ──▶ MongoDB: applications, customers
-                                                   │
-                                                   └─▶ LogService ───────▶ MongoDB: logs
-                                                                             └─ monitor TTL apaga vencidos
+App do cliente
+  │
+  ├─ 1. POST /auth/token (X-API-Key) ─▶ get_application_by_api_key ─▶ MongoDB: applications, customers
+  │                                     TokenService ───────────────▶ JWT de 1 hora (não é gravado)
+  │
+  └─ 2. POST /logs (Bearer + JSON) ───▶ get_application ───────────▶ MongoDB: applications, customers
+                                        LogService ────────────────▶ MongoDB: logs
+                                                                      └─ monitor TTL apaga vencidos
 ```
 
 | Componente | Responsabilidade |
 |---|---|
-| Rota FastAPI `POST /logs` | Valida o corpo como `LogCreate` (Pydantic) e devolve `LogRead` |
-| Dependência `get_application` | Autentica a API key e carrega `Application` + `Customer` |
-| `LogService` | Valida `information_data`, mascara dados sensíveis, monta o `LogDocument` e grava |
+| Rota `POST /auth/token` | Troca a API key por um token de acesso e devolve `TokenResponse` |
+| Dependência `get_application_by_api_key` | Autentica a API key e carrega `Application` + `Customer` |
+| `TokenService` | Gera e valida o JWT de 1 hora |
+| Rota `POST /logs` | Valida o corpo como `LogCreate` (Pydantic) e devolve `LogRead` |
+| Dependência `get_application` | Valida o token e carrega `Application` + `Customer` |
+| `LogService` | Valida `information_data`, mascara dados sensíveis, junta as tags, monta o `LogDocument` e grava |
 | MongoDB | Persistência, índices e remoção de logs vencidos por TTL |
+
+## Fluxo de emissão do token (`POST /auth/token`)
+
+1. O app do cliente envia `POST /auth/token` com o cabeçalho `X-API-Key`.
+2. A dependência `get_application_by_api_key` calcula o hash da chave recebida.
+3. Busca a aplicação: `applications.find_one` por `apiKeys.keyHash`.
+4. Chave ausente, inexistente, expirada ou revogada → **401 Unauthorized**.
+5. Busca o cliente: `customers.find_one` por `customerId` (resultado pode ficar em cache). Cliente inativo → **403 Forbidden**.
+6. O `TokenService` gera o JWT com `sub` (id da aplicação), `iat`, `exp = min(iat + 1 hora, expiresAt da chave)` e `jti`.
+7. A API responde **200 OK** com `access_token`, `token_type: "bearer"` e `expires_in`, e o cabeçalho `Cache-Control: no-store`.
 
 ## Fluxo de ingestão (`POST /logs`)
 
-1. O app do cliente envia `POST /logs` com o cabeçalho `X-API-Key` e o corpo JSON.
+1. O app do cliente envia `POST /logs` com o cabeçalho `Authorization: Bearer <token>` e o corpo JSON.
 2. O FastAPI resolve a dependência `get_application`.
-3. A dependência calcula o hash da chave recebida.
-4. Busca a aplicação: `applications.find_one` por `apiKeys.keyHash`.
-5. Chave inexistente, expirada ou revogada → **401 Unauthorized**.
-6. Busca o cliente: `customers.find_one` por `customerId`. Esse resultado pode ficar em cache.
-7. Cliente inativo → **403 Forbidden**.
-8. O Pydantic valida o corpo como `LogCreate`. Campo inválido ou extra (como `customer_id`) → **422 Unprocessable Entity**.
-9. A rota chama `LogService.registrar(log_create, application, customer)`.
-10. O serviço checa o tamanho e as chaves de `information_data`: acima do limite → **413 Payload Too Large**; chave com `$` ou `.` → **422**.
-11. O serviço mascara os campos sensíveis (senha, CPF, cartão).
-12. O serviço monta o `LogDocument` com `received_at`, `expire_at` e `application_name`.
-13. `logs.insert_one` devolve o `inserted_id`.
-14. A API responde **201 Created** com o `LogRead` (id do log).
-15. Depois de `expireAt`, o monitor TTL do MongoDB apaga o documento.
+3. A dependência valida a assinatura e a expiração do token. Ausente, inválido ou expirado → **401 Unauthorized** (com `WWW-Authenticate: Bearer`).
+4. Busca a aplicação por `_id` igual ao `sub` do token (resultado pode ficar em cache). Não encontrada → **401**.
+5. Busca o cliente por `customerId` (resultado pode ficar em cache). Cliente inativo → **403 Forbidden**.
+6. O Pydantic valida o corpo como `LogCreate`, incluindo o formato e o limite das tags. Campo inválido ou extra (como `customer_id`) → **422 Unprocessable Entity**.
+7. A rota chama `LogService.registrar(log_create, application, customer)`.
+8. O serviço checa o tamanho e as chaves de `information_data`: acima do limite → **413 Payload Too Large**; chave com `$` ou `.` → **422**.
+9. O serviço mascara os campos sensíveis (senha, CPF, cartão).
+10. O serviço junta as tags da aplicação com as do log; nas chaves que a aplicação define, vale a da aplicação.
+11. O serviço monta o `LogDocument` com `received_at`, `expire_at`, `application_name` e as tags finais.
+12. `logs.insert_one` devolve o `inserted_id`.
+13. A API responde **201 Created** com o `LogRead` (id do log).
+14. Depois de `expireAt`, o monitor TTL do MongoDB apaga o documento.
 
 ## Persistência (MongoDB)
 
-Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys ficam embutidas no array `apiKeys` de cada documento de `applications`; as demais relações são referências por `ObjectId`. Como o MongoDB não tem chave estrangeira, a integridade é garantida pela API.
+Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys ficam embutidas no array `apiKeys` de cada documento de `applications`; as demais relações são referências por `ObjectId`. Como o MongoDB não tem chave estrangeira, a integridade é garantida pela API. Tokens de acesso não são gravados (ADR-016).
 
 | Coleção | Campos |
 |---|---|
 | `customers` | `_id`, `name`, `isActive`, `retentionDays`, `createdAt` |
 | `users` | `_id`, `customerId`, `name`, `email` (único), `passwordHash`, `createdAt` |
-| `applications` | `_id`, `customerId`, `name`, `apiKeys` (array de subdocumentos), `createdAt` |
+| `applications` | `_id`, `customerId`, `name`, `apiKeys` (array de subdocumentos), `tags` (array de strings `chave:valor`), `createdAt` |
 | `applications.apiKeys[]` | `keyHash` (único), `prefix`, `expiresAt`, `revokedAt` |
-| `logs` | `_id`, `customerId`, `applicationId`, `applicationName` (cópia de `applications.name`), `correlationId` (UUID, opcional), `level` (int), `message`, `exception` (opcional), `environment`, `informationData` (documento livre, opcional), `occurredAt`, `receivedAt`, `expireAt` |
+| `logs` | `_id`, `customerId`, `applicationId`, `applicationName` (cópia de `applications.name`), `correlationId` (UUID, opcional), `level` (int), `message`, `exception` (opcional), `environment`, `informationData` (documento livre, opcional), `tags` (array de strings `chave:valor`, lista final), `occurredAt`, `receivedAt`, `expireAt` |
 
 ### Índices
 
 | Coleção | Índice | Uso |
 |---|---|---|
 | `users` | `{ email: 1 }` único | Login e unicidade do e-mail |
-| `applications` | `{ "apiKeys.keyHash": 1 }` único | Autenticação de cada requisição |
+| `applications` | `{ "apiKeys.keyHash": 1 }` único | Autenticação da API key na emissão do token |
 | `logs` | `{ customerId: 1, occurredAt: -1 }` | Listagem padrão, mais recentes primeiro |
 | `logs` | `{ customerId: 1, correlationId: 1 }` | Rastrear um fluxo completo |
 | `logs` | `{ customerId: 1, applicationId: 1, level: 1, occurredAt: -1 }` | Filtros combinados |
+| `logs` | `{ customerId: 1, tags: 1, occurredAt: -1 }` | Filtro por tags (índice multikey) |
 | `logs` | `{ expireAt: 1 }` com `expireAfterSeconds: 0` | Apagar logs vencidos (TTL) |
 
 ## Decisões (ADRs)
 
 | ADR | Decisão |
 |---|---|
-| [001](#adr-001--cliente-identificado-pela-api-key) | Cliente identificado pela API key |
+| [001](#adr-001--cliente-identificado-pela-credencial-da-aplicação) | Cliente identificado pela credencial da aplicação |
 | [002](#adr-002--mongodb-com-pymongo-async) | MongoDB com PyMongo Async |
 | [003](#adr-003--embutir-ou-referenciar) | Embutir ou referenciar |
 | [004](#adr-004--retenção-por-ttl-em-cada-documento) | Retenção por TTL em cada documento |
@@ -86,14 +104,16 @@ Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys fi
 | [012](#adr-012--information_data-com-limite-e-mascaramento) | `information_data` com limite e mascaramento |
 | [013](#adr-013--logs-imutáveis) | Logs imutáveis |
 | [014](#adr-014--testes-contra-mongodb-real) | Testes contra MongoDB real |
+| [015](#adr-015--tags-como-dimensão-de-filtro) | Tags como dimensão de filtro |
+| [016](#adr-016--token-de-acesso-temporário-jwt-de-1-hora) | Token de acesso temporário (JWT de 1 hora) |
 
 Todas com status **Aceita**.
 
-### ADR-001 — Cliente identificado pela API key
+### ADR-001 — Cliente identificado pela credencial da aplicação
 
 - **Contexto:** o modelo original recebia `CustomerId` no corpo, o que permitia gravar logs em nome de outro cliente.
-- **Decisão:** cliente e aplicação donos do log vêm só da API key. `LogCreate` usa `ConfigDict(extra="forbid")`, então um `customer_id` no corpo é recusado com 422 em vez de ser ignorado.
-- **Consequências:** a ingestão depende da dependência `get_application`; nenhum campo do corpo troca o dono do log.
+- **Decisão:** cliente e aplicação donos do log vêm só da credencial da aplicação: a API key na emissão do token e o token de acesso no envio de logs (ADR-016). `LogCreate` usa `ConfigDict(extra="forbid")`, então um `customer_id` no corpo é recusado com 422 em vez de ser ignorado.
+- **Consequências:** o envio de logs depende da dependência `get_application`; nenhum campo do corpo troca o dono do log.
 
 ### ADR-002 — MongoDB com PyMongo Async
 
@@ -109,6 +129,7 @@ Todas com status **Aceita**.
 | Customer → Application | Referência | A aplicação é consultada sozinha a cada requisição |
 | Customer → User | Referência | Se um usuário precisar atender vários clientes, vira um array `customerIds` |
 | Log → Customer / Application | Referência + cópia do nome | Listagens e filtros não precisam de `$lookup` |
+| Log → tags da aplicação | Cópia | O filtro por tags consulta só a coleção `logs` |
 
 ### ADR-004 — Retenção por TTL em cada documento
 
@@ -136,7 +157,7 @@ Todas com status **Aceita**.
 ### ADR-008 — API keys guardadas como hash + prefixo
 
 - **Decisão:** a plataforma gera a chave e a mostra uma única vez. O banco guarda só o hash e um prefixo curto (ex.: `lx_ab12`) para identificação. Uma aplicação pode ter várias chaves, e cada uma expira ou é revogada sem afetar as outras.
-- **Consequências:** a autenticação busca a aplicação pelo hash da chave recebida, usando o índice único `apiKeys.keyHash`. Por isso esse hash precisa ser determinístico, ao contrário do hash de senha. O algoritmo ainda não foi definido (ver [Pontos em aberto](business-rules.md#pontos-em-aberto)).
+- **Consequências:** a emissão do token (ADR-016) busca a aplicação pelo hash da chave recebida, usando o índice único `apiKeys.keyHash`. Por isso esse hash precisa ser determinístico, ao contrário do hash de senha. O algoritmo ainda não foi definido (ver [Pontos em aberto](business-rules.md#pontos-em-aberto)).
 
 ### ADR-009 — `ObjectId` como id do log
 
@@ -167,3 +188,23 @@ Todas com status **Aceita**.
 
 - **Decisão:** testes de endpoint com pytest e `httpx.AsyncClient` contra um MongoDB real subido pelo Testcontainers.
 - **Motivo:** mocks não validariam os índices únicos nem o TTL.
+
+### ADR-015 — Tags como dimensão de filtro
+
+- **Contexto:** os filtros do documento (cliente, aplicação, nível, período e `correlationId`) não cobrem recortes como time, funcionalidade ou região.
+- **Decisão:** campo `tags`, um array de strings `chave:valor` normalizadas em minúsculas, em `applications` e em `logs`. Ao gravar, o log recebe as tags da aplicação somadas às dele; nas chaves que a aplicação define, vale a da aplicação. Índice multikey `{ customerId: 1, tags: 1, occurredAt: -1 }`.
+- **Alternativas descartadas:**
+  - Objeto `{ chave: valor }`: aceita um só valor por chave e, com chaves livres, exige índice curinga (`$**`).
+  - Array de `{ k, v }` (attribute pattern): filtra igual, mas as consultas com `$elemMatch` ficam mais verbosas.
+- **Consequências:** o filtro por tags usa `$all` e não precisa de `$lookup`. Mudar as tags de uma aplicação não altera logs já gravados. Tags ficam fora do mascaramento, então não podem conter dados pessoais.
+
+### ADR-016 — Token de acesso temporário (JWT de 1 hora)
+
+- **Contexto:** a API key é uma credencial de longa duração. Enviada em todo log, ela fica mais exposta (código do cliente, proxies, logs de rede).
+- **Decisão:** `POST /auth/token` troca a API key por um JWT assinado com HS256, válido por 1 hora e nunca além da expiração da chave. `POST /logs` aceita só `Authorization: Bearer <token>`. Claims: `sub` (id da aplicação), `iat`, `exp` e `jti`. O token não é gravado.
+- **Alternativa descartada:** token opaco guardado no MongoDB com índice TTL. Permitiria revogação imediata, mas exige uma coleção nova e uma consulta a mais em cada envio de log.
+- **Consequências:**
+  - Revogar uma API key impede novos tokens, mas não derruba os já emitidos (no máximo 1 hora). Está nos [Pontos em aberto](business-rules.md#pontos-em-aberto).
+  - Desativar o cliente vale na hora, porque o cliente é checado em cada envio.
+  - O segredo de assinatura (`JWT_SECRET`) vira uma credencial crítica da plataforma. Trocá-lo invalida todos os tokens emitidos.
+  - A aplicação cliente precisa pedir um novo token antes de o atual expirar.
