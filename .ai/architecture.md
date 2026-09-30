@@ -1,7 +1,7 @@
 # Arquitetura
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: tags (ADR-015), token de acesso temporário (ADR-016) e contrato da API (ADR-017 a ADR-019).
+> Complementos posteriores ao documento: tags (ADR-015), token de acesso temporário (ADR-016), contrato da API (ADR-017 a ADR-019) e schema do banco (ADR-020 a ADR-022).
 > Stack e versões: [tech-stack.md](tech-stack.md) · Padrões de código: [standards.md](standards.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Visão geral
@@ -33,7 +33,8 @@ App do cliente
 | Rota `POST /logs` | Valida o corpo como `LogCreate` (Pydantic) e devolve `LogRead` |
 | Dependência `get_application` | Valida o token e carrega `Application` + `Customer` |
 | `LogService` | Valida `information_data`, mascara dados sensíveis, junta as tags, monta o `LogDocument` e grava |
-| MongoDB | Persistência, índices e remoção de logs vencidos por TTL |
+| MongoDB | Persistência, validação dos documentos, índices e remoção de logs vencidos por TTL |
+| `migrate` | Aplica o schema do MongoDB (validators, collation, índices) antes de a API subir (ADR-020) |
 
 ## Fluxo de emissão do token (`POST /auth/token`)
 
@@ -81,27 +82,40 @@ Os endpoints marcados como proposta cobrem o escopo (cadastros e painel), que o 
 
 ## Persistência (MongoDB)
 
-Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys ficam embutidas no array `apiKeys` de cada documento de `applications`; as demais relações são referências por `ObjectId`. Como o MongoDB não tem chave estrangeira, a integridade é garantida pela API. Tokens de acesso não são gravados (ADR-016).
+Quatro coleções operacionais (`customers`, `users`, `applications` e `logs`) e duas do modelo dimensional (`log_levels` e `log_metrics_hourly`, ADR-021). As API keys ficam embutidas no array `apiKeys` de cada documento de `applications`; as demais relações são referências por `ObjectId`. Como o MongoDB não tem chave estrangeira, a integridade é garantida pela API. Tokens de acesso não são gravados (ADR-016).
+
+O schema é código: um módulo por coleção em `app/infrastructure/mongodb/ddl/`, com validator `$jsonSchema` que recusa documento fora do formato (ADR-020). Tipos BSON, regras de cada campo e o que o backend precisa seguir ao ler: [`docs/database/README.md`](../docs/database/README.md).
 
 | Coleção | Campos |
 |---|---|
-| `customers` | `_id`, `name`, `isActive`, `retentionDays`, `createdAt` |
-| `users` | `_id`, `customerId`, `name`, `email` (único), `passwordHash`, `createdAt` |
-| `applications` | `_id`, `customerId`, `name`, `apiKeys` (array de subdocumentos), `tags` (array de strings `chave:valor`), `createdAt` |
+| `customers` | `_id`, `name`, `isActive`, `retentionDays` (1 a 3650), `createdAt` |
+| `users` | `_id`, `customerId`, `name`, `email` (único, sem diferenciar maiúsculas), `passwordHash` (Argon2id), `createdAt` |
+| `applications` | `_id`, `customerId`, `name` (único no cliente, sem diferenciar maiúsculas), `apiKeys` (array de subdocumentos), `tags` (array de strings `chave:valor`), `createdAt` |
 | `applications.apiKeys[]` | `keyHash` (único), `prefix`, `expiresAt`, `revokedAt` |
-| `logs` | `_id`, `customerId`, `applicationId`, `applicationName` (cópia de `applications.name`), `correlationId` (UUID, opcional), `level` (int), `message`, `exception` (opcional), `environment`, `informationData` (documento livre, opcional), `tags` (array de strings `chave:valor`, lista final), `occurredAt`, `receivedAt`, `expireAt` |
+| `logs` | `_id`, `customerId`, `applicationId`, `applicationName` (cópia de `applications.name`), `correlationId` (UUID ou null), `level` (int), `message`, `exception` (ou null), `environment`, `informationData` (documento livre ou null), `tags` (array de strings `chave:valor`, lista final), `occurredAt`, `receivedAt`, `expireAt` |
+| `log_levels` | `_id` (valor de `LogLevel`), `name`. Carregada a partir do enum |
+| `log_metrics_hourly` | `_id`, `customerId`, `applicationId`, `environment`, `level`, `bucketStart`, `count`, `expireAt` (proposta) |
+
+Todo campo é gravado; o que é opcional no contrato vai como `null`.
 
 ### Índices
 
 | Coleção | Índice | Uso |
 |---|---|---|
-| `users` | `{ email: 1 }` único | Login e unicidade do e-mail |
-| `applications` | `{ "apiKeys.keyHash": 1 }` único | Autenticação da API key na emissão do token |
-| `logs` | `{ customerId: 1, occurredAt: -1 }` | Listagem padrão, mais recentes primeiro |
-| `logs` | `{ customerId: 1, correlationId: 1 }` | Rastrear um fluxo completo |
-| `logs` | `{ customerId: 1, applicationId: 1, level: 1, occurredAt: -1 }` | Filtros combinados |
-| `logs` | `{ customerId: 1, tags: 1, occurredAt: -1 }` | Filtro por tags (índice multikey) |
+| `users` | `{ email: 1 }` único (collation da coleção) | Login e unicidade do e-mail |
+| `users` | `{ customerId: 1 }` | Usuários do cliente |
+| `applications` | `{ "apiKeys.keyHash": 1 }` único, parcial (`$exists: true`) | Autenticação da API key na emissão do token. Parcial porque a aplicação nasce sem chaves |
+| `applications` | `{ customerId: 1, name: 1 }` único, collation strength 2 | Nome único no cliente (409) e listagem |
+| `logs` | `{ customerId: 1, occurredAt: -1, _id: -1 }` | Listagem padrão, período e cursor |
+| `logs` | `{ customerId: 1, level: 1, occurredAt: -1, _id: -1 }` | Filtro por nível sem aplicação |
+| `logs` | `{ customerId: 1, applicationId: 1, level: 1, occurredAt: -1, _id: -1 }` | Filtros combinados |
+| `logs` | `{ customerId: 1, correlationId: 1, occurredAt: -1, _id: -1 }`, parcial (só com `correlationId`) | Rastrear um fluxo completo |
+| `logs` | `{ customerId: 1, tags: 1, occurredAt: -1, _id: -1 }` | Filtro por tags (índice multikey) |
 | `logs` | `{ expireAt: 1 }` com `expireAfterSeconds: 0` | Apagar logs vencidos (TTL) |
+| `log_metrics_hourly` | `{ customerId: 1, bucketStart: -1, applicationId: 1, environment: 1, level: 1 }` único | Chave do `$merge` e painel por período |
+| `log_metrics_hourly` | `{ expireAt: 1 }` com `expireAfterSeconds: 0` | Apagar agregados vencidos (TTL) |
+
+Os índices de listagem terminam em `_id` para desempatar logs com o mesmo `occurredAt` na paginação por cursor. O filtro de nível vai como `$in` com os níveis da faixa (não `$gte`), para o MongoDB usar a ordem do índice em vez de ordenar em memória.
 
 ## Decisões (ADRs)
 
@@ -126,6 +140,9 @@ Quatro coleções: `customers`, `users`, `applications` e `logs`. As API keys fi
 | [017](#adr-017--contrato-openapi-como-fonte-da-verdade) | Contrato OpenAPI como fonte da verdade |
 | [018](#adr-018--json-da-api-em-snake_case) | JSON da API em `snake_case` |
 | [019](#adr-019--erros-no-formato-problem-details-rfc-9457) | Erros no formato Problem Details (RFC 9457) |
+| [020](#adr-020--schema-do-banco-como-código-python-assíncrono) | Schema do banco como código Python assíncrono |
+| [021](#adr-021--modelo-dimensional-star-schema-onde-há-agregação) | Modelo dimensional (star schema) onde há agregação |
+| [022](#adr-022--unicidade-sem-diferenciar-maiúsculas-por-collation) | Unicidade sem diferenciar maiúsculas por collation |
 
 Todas com status **Aceita**.
 
@@ -248,3 +265,29 @@ Todas com status **Aceita**.
 - **Decisão:** toda resposta de erro usa `application/problem+json` com `type`, `title`, `status` e `detail`. O 422 acrescenta `errors`, uma lista com `loc`, `msg` e `type`, no formato dos erros do Pydantic.
 - **Motivo:** um formato padrão e único de erro para todos os endpoints, que o frontend trata em um lugar só.
 - **Consequências:** o backend troca os handlers de erro padrão do FastAPI, que respondem `{"detail": ...}`.
+
+### ADR-020 — Schema do banco como código Python assíncrono
+
+- **Contexto:** o MongoDB não impõe formato aos documentos, e regras de negócio dependem de índices (e-mail único, API key única, retenção por TTL). Os testes precisam do mesmo schema de produção (ADR-014).
+- **Decisão:** um módulo por coleção em `app/infrastructure/mongodb/ddl/`, com validator `$jsonSchema` (`validationLevel: strict`, `validationAction: error`), collation e índices com nome. `python -m app.infrastructure.mongodb.migrate` aplica tudo com o `AsyncMongoClient`, com as coleções em paralelo e de forma idempotente. No `compose.yaml`, o serviço `migrate` roda antes da API, que só sobe se ele terminar sem erro. Os limites que a validação da API também usa ficam em `app/domain/constraints.py` e em `LogLevel`.
+- **Alternativas descartadas:**
+  - Scripts `.js` em `/docker-entrypoint-initdb.d`: rodam só com o volume vazio, e o Testcontainers não os executa.
+  - Criar o schema na subida da API: cada réplica tentaria aplicar, e a API precisaria de permissão de DDL em produção.
+- **Consequências:** mudar campo ou índice é mudar o módulo da coleção, no mesmo PR do código. Um documento fora do schema é recusado (erro 121), e a divergência entre código e banco aparece nos testes. A collation de uma coleção não muda depois de criada.
+
+### ADR-021 — Modelo dimensional (star schema) onde há agregação
+
+- **Contexto:** o painel de consulta e os alertas estão no escopo, e gráficos precisam de contagens por período. Recontar `logs`, a coleção mais volumosa, a cada gráfico disputaria o banco com a ingestão.
+- **Decisão:** `logs` é o fato, no grão do evento. `customers`, `applications` e `log_levels` são as dimensões; `environment` e `correlationId` são dimensões degeneradas, e o tempo é o próprio `occurredAt`. As contagens do painel ficam em `log_metrics_hourly`, um fato agregado por cliente × aplicação × ambiente × nível × hora, recalculado por `refresh_log_metrics` com `$merge`. `log_levels` é carregada a partir de `LogLevel`, para quem lê o banco fora do Python. O fato agregado é **proposta** até as regras do painel serem definidas.
+- **Alternativas descartadas:**
+  - Normalizar `logs` em fato + dimensões: toda listagem precisaria de `$lookup`, o que o ADR-003 evita.
+  - Coleção de datas (`dim_date`): `$dateTrunc` e `$dateToParts` fazem o mesmo sem `$lookup`.
+  - Time series collection para o agregado: não aceita índice único, e o `$merge` precisa de um para substituir a hora recalculada.
+- **Consequências:** o agregado guarda só as chaves; o nome da aplicação vem da dimensão. `refresh_log_metrics` é um job da plataforma e a única leitura de `logs` sem filtro por `customerId`: busca os logs novos pelo `_id`, sem índice novo, e grava sempre separado por cliente. Quem agenda o job fica para a definição do painel.
+
+### ADR-022 — Unicidade sem diferenciar maiúsculas por collation
+
+- **Contexto:** o e-mail do usuário é único (RN-11), e o contrato propõe nome de aplicação único no cliente sem diferenciar maiúsculas, o mesmo cuidado de "Checkout" e "checkout" (RN-13). Um índice único comum trata "Ana@Example.com" e "ana@example.com" como valores diferentes.
+- **Decisão:** `users` é criada com a collation padrão `{ locale: "en", strength: 2 }`: o índice único e todas as consultas ignoram maiúsculas, sem o backend passar collation. Em `applications`, a collation fica só no índice `{ customerId: 1, name: 1 }`, para a busca por `apiKeys.keyHash` continuar exata.
+- **Alternativa descartada:** converter para minúsculas no backend. Depende de toda escrita e toda consulta lembrarem da conversão; a collation vale no banco para qualquer caminho.
+- **Consequências:** o e-mail é gravado como foi digitado. Consultas por nome de aplicação passam `NAME_COLLATION` para usar o índice.

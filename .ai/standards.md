@@ -67,19 +67,23 @@ A conversão `snake_case` ↔ `camelCase` fica na camada de persistência. O res
 
 - **IDs:** `ObjectId` no banco, `str` nas respostas.
 - **`correlation_id`:** `UUID`, gravado com `uuidRepresentation="standard"`.
-- **Datas:** sempre com fuso, em UTC (`datetime.now(UTC)`). Nunca usar datas sem fuso nem `datetime.utcnow()`.
-- **Nível:** gravar o valor numérico de `LogLevel`. Filtro por faixa é comparação: "a partir de Warning" é `level >= LogLevel.WARNING`.
+- **Datas:** sempre com fuso, em UTC (`datetime.now(UTC)`). Nunca usar datas sem fuso nem `datetime.utcnow()`. O BSON guarda milissegundos: truncar os microssegundos antes de gravar, para o valor respondido ser o mesmo que fica no banco.
+- **Nível:** gravar o valor numérico de `LogLevel`. Filtro por faixa é comparação: "a partir de Warning" é `level >= LogLevel.WARNING`. Na consulta ao MongoDB, a faixa vira `$in` com os níveis dela (ver [Acesso ao MongoDB](#acesso-ao-mongodb)).
 - **Tags:** `list[str]` já normalizada. Nunca comparar nem filtrar tags sem passar pela mesma normalização.
 
 ## Acesso ao MongoDB
 
-- Conectar com `AsyncMongoClient(uri, uuidRepresentation="standard", tz_aware=True)`.
-- **Toda consulta à coleção `logs` filtra por `customerId`.** Todo índice novo em `logs` começa por `customerId`.
+- Conectar só com `create_mongo_client(uri)` (`app/infrastructure/mongodb/client.py`), que já passa `uuidRepresentation="standard"`, `tz_aware=True` e `tzinfo=UTC`. Não instanciar o `AsyncMongoClient` direto. Um cliente por processo, criado no `lifespan`.
+- **Toda consulta à coleção `logs` filtra por `customerId`.** Todo índice novo em `logs` começa por `customerId`. A única exceção são jobs da plataforma que não atendem usuários, como `refresh_log_metrics`, e eles gravam sempre separado por cliente.
 - Filtro por tags usa `$all` junto com o cliente: `{"customerId": ..., "tags": {"$all": [...]}}`.
+- Filtro por nível usa `$in` com os níveis da faixa, nunca `$gte`: com `$in` o MongoDB usa a ordem do índice; com `$gte` ordena em memória. Com filtro de aplicação e sem nível, mandar todos os níveis no `$in`.
+- Listagens de logs ordenam por `[("occurredAt", -1), ("_id", -1)]`. O cursor leva `occurredAt` e `_id` do último item, porque vários logs podem ter o mesmo `occurredAt`.
 - Em `logs` só existe `insert_one`. Não escrever `update` nem `delete`; quem apaga é o TTL.
+- Gravar todos os campos do documento; o que é opcional vai como `null`. Não usar `model_dump(exclude_none=True)` no mapeamento: ele apagaria também os `None` de dentro de `information_data`.
 - Não existe chave estrangeira: validar no código que o documento referenciado existe antes de gravar.
 - Listagens de logs não usam `$lookup`; usam o `applicationName` e as `tags` copiados no próprio documento.
-- Índices usados pela aplicação: [architecture.md](architecture.md#índices). Criar ou alterar um índice junto com o código que depende dele.
+- `DuplicateKeyError` vira 409 pelo nome do índice violado (ex.: `users_email_unique`). `WriteError` com código 121 (documento fora do schema) é bug e vira 500.
+- O schema do banco (validators, collation e índices) fica em `app/infrastructure/mongodb/ddl/`, um módulo por coleção, e muda no mesmo PR do código que depende dele ([ADR-020](architecture.md#adr-020--schema-do-banco-como-código-python-assíncrono)). Limites que o Pydantic e o banco validam vêm de `app/domain/constraints.py`. Índices em uso: [architecture.md](architecture.md#índices). Como ler cada tipo: [`docs/database/README.md`](../docs/database/README.md#leitura-pelo-backend-python).
 
 ## Segurança no código
 

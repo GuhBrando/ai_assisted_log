@@ -49,6 +49,8 @@ O contrato segue a separação por contexto e por agregado do domínio (Clean Ar
 
 ## Banco
 
+O schema do MongoDB (validators, índices, tipos BSON e como o backend lê cada um) está em [`docs/database/README.md`](../database/README.md).
+
 Campos do contrato → documentos do MongoDB (a conversão `snake_case` ↔ `camelCase` fica na camada de persistência):
 
 | Contrato | MongoDB |
@@ -69,16 +71,16 @@ Consultas de cada endpoint:
 
 | Endpoint | Coleção | Operação | Índice |
 |---|---|---|---|
-| `POST /auth/token` | `applications`, `customers` | `find_one` por `apiKeys.keyHash`; `find_one` por `_id` | `{ "apiKeys.keyHash": 1 }` único |
-| `POST /auth/login` | `users`, `customers` | `find_one` por `email`; `find_one` por `_id` | `{ email: 1 }` único |
+| `POST /auth/token` | `applications`, `customers` | `find_one` por `apiKeys.keyHash`; `find_one` por `_id` | `{ "apiKeys.keyHash": 1 }` único, parcial |
+| `POST /auth/login` | `users`, `customers` | `find_one` por `email`; `find_one` por `_id` | `{ email: 1 }` único, sem diferenciar maiúsculas |
 | `POST /logs` | `applications`, `customers`, `logs` | `find_one` por `_id`; `insert_one` | TTL `{ expireAt: 1 }` |
 | `GET /logs` | `logs` | `find` por `customerId` + filtros, ordenado por `occurredAt` decrescente | Os de `logs` em [architecture.md](../../.ai/architecture.md#índices) |
 | `GET /logs/{log_id}` | `logs` | `find_one` por `_id` e `customerId` | `_id` |
-| `POST /applications`, `PATCH /applications/{id}` | `applications` | `insert_one` / `update_one` | **Proposto:** `{ customerId: 1, name: 1 }` único, com collation sem diferença de maiúsculas |
-| `GET /applications` | `applications` | `find` por `customerId` | O proposto acima |
+| `POST /applications`, `PATCH /applications/{id}` | `applications` | `insert_one` / `update_one` | `{ customerId: 1, name: 1 }` único, com collation sem diferença de maiúsculas |
+| `GET /applications` | `applications` | `find` por `customerId` | O índice acima |
 | `POST .../api-keys`, `POST .../revoke` | `applications` | `update_one` com `$push` / `$set` em `apiKeys.$.revokedAt` | `_id` |
 | `POST /users` | `users` | `insert_one` | `{ email: 1 }` único |
-| `GET /users` | `users` | `find` por `customerId` | **Proposto:** `{ customerId: 1 }` |
+| `GET /users` | `users` | `find` por `customerId` | `{ customerId: 1 }` |
 | `POST /customers` | `customers`, `users` | dois `insert_one` | `{ email: 1 }` único |
 | `GET` / `PATCH /customers/me` | `customers` | `find_one` / `update_one` por `_id` | `_id` |
 

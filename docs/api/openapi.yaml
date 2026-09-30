@@ -536,7 +536,7 @@ paths:
       description: |
         **Proposta.** Cadastra um usuário no cliente do usuário logado (RN-11).
 
-        - O e-mail é único em toda a plataforma: e-mail já cadastrado → 409.
+        - O e-mail é único em toda a plataforma, sem diferenciar maiúsculas de minúsculas: e-mail já cadastrado → 409.
         - A senha é guardada só como hash (pwdlib + Argon2) e nunca volta nas respostas.
       security:
         - UserToken: []
@@ -1353,7 +1353,7 @@ components:
         email:
           type: string
           format: email
-          description: Único em toda a plataforma.
+          description: Único em toda a plataforma, sem diferenciar maiúsculas de minúsculas.
         password:
           type: string
           format: password
@@ -1396,7 +1396,8 @@ components:
         retention_days:
           type: integer
           minimum: 1
-          description: Por quantos dias os logs do cliente ficam guardados (RN-08).
+          maximum: 3650
+          description: Por quantos dias os logs do cliente ficam guardados (RN-08). Até 3650 dias (10 anos).
 
     CustomerRegistration:
       type: object
@@ -1428,7 +1429,8 @@ components:
         retention_days:
           type: integer
           minimum: 1
-          description: Vale só para os logs recebidos depois da mudança.
+          maximum: 3650
+          description: Vale só para os logs recebidos depois da mudança. Até 3650 dias (10 anos).
 
     CustomerRead:
       type: object

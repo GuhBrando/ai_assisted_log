@@ -4,17 +4,14 @@ from contextlib import asynccontextmanager
 import pymongo
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pymongo import AsyncMongoClient
 from pymongo.errors import PyMongoError
+
+from app.infrastructure.mongodb.client import create_mongo_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client = AsyncMongoClient(
-        os.environ["MONGODB_URI"],
-        uuidRepresentation="standard",
-        tz_aware=True,
-    )
+    client = create_mongo_client(os.environ["MONGODB_URI"])
     app.state.mongo_client = client
     yield
     await client.close()

@@ -78,3 +78,55 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 - Referências atualizadas em `.ai/tech-stack.md`, `.ai/standards.md`, `.env.example`, `compose.yaml`, no comentário do próprio script e na descrição da PR #3.
 - Verificação: `scripts/startup.sh` sobe tudo e `/health` responde 200.
 - Commit `8c1e600` e push. A branch do contrato (003) foi recriada em cima desse commit.
+
+## 005 — DDLs do MongoDB
+
+- **Data:** 2026-09-29
+- **Branch:** `feat/mongodb-ddl`
+- **PR:** —
+
+**Prompt**
+
+> Atualize a main e crie uma branch para os DDLs. Colete o contexto do projeto via .ai e crie todos os DDLs necessarios para subir o projeto com sucesso. Certifique-se de usar starschema quando necessário, respeitar a tipagem dos dados e ter uma analise crítica de que um backend em python lerá os dados desse mongo. Crie a estrutura pensando em modelo Async
+
+**Executado**
+
+- `main` atualizada com `git pull --ff-only` (estava 12 commits atrás) e criada a branch `feat/mongodb-ddl`. Leitura de `AGENTS.md`, `.ai/*.md`, `docs/api/openapi.yaml`, `docs/api/README.md`, `compose.yaml`, `Dockerfile` e `app/main.py`.
+- Antes de escrever, testes no MongoDB 8.0 local num banco descartável. Resultados que mudaram o desenho:
+  - O índice único `{ "apiKeys.keyHash": 1 }` do documento dá erro 11000 com duas aplicações sem chave (o contrato cria a aplicação sem chaves). Virou índice parcial (`$exists: true`), que continua sendo usado na busca pelo hash.
+  - Índice parcial com `$type: "binData"` não é usado na busca por UUID (COLLSCAN); com `$gte: BinData(0, "")` é, e os `null` ficam de fora.
+  - `level >= 3` ordena em memória; `level $in [3, 4, 5]` usa a ordem do índice (SORT_MERGE).
+- Criados:
+  - `app/domain/log_level.py` (`LogLevel`) e `app/domain/constraints.py` (limites de tags e retenção, compartilhados entre o Pydantic e o banco).
+  - `app/infrastructure/mongodb/client.py`: `create_mongo_client`, com `uuidRepresentation="standard"`, `tz_aware=True` e `tzinfo=UTC`.
+  - `app/infrastructure/mongodb/ddl/`: um módulo por coleção (`customers`, `users`, `applications`, `logs`, `log_levels`, `log_metrics_hourly`), com validator `$jsonSchema` (`strict`/`error`, `additionalProperties: false`), collation e índices com nome. Destaques: `retentionDays` int de 1 a 3650; senha só como hash Argon2id; e-mail e nome de aplicação únicos sem diferenciar maiúsculas; `expireAt` entre 1 e 3650 dias depois de `receivedAt` (`$expr`); índices de listagem terminando em `(occurredAt, _id)` para o cursor; índice novo de nível sem aplicação.
+  - Star schema: `logs` como fato no grão do evento; `customers`, `applications` e `log_levels` como dimensões; `log_metrics_hourly` como fato agregado por hora (proposta), recalculado por `refresh_log_metrics` com `$merge`, idempotente e sem índice novo em `logs`.
+  - `app/infrastructure/mongodb/migrate.py`: `apply_schema(db)` assíncrono, com as coleções em paralelo (`asyncio.TaskGroup`), idempotente; recusa com mensagem clara uma coleção existente com outra collation.
+  - `docs/database/README.md`: como aplicar, modelo dimensional, tipos BSON ↔ Python ↔ contrato, índices e 13 pontos de leitura pelo backend Python (datas em ms, int32, `OverflowError` com inteiros grandes, chaves com `$` aceitas pelo MongoDB 8, `exclude_none`, collation, TTL, sem transações, API async).
+- Alterados:
+  - `compose.yaml`: serviço `migrate` (mesma imagem, roda antes da API; a API espera `service_completed_successfully`) e a URI do MongoDB numa âncora YAML.
+  - `app/main.py`: usa `create_mongo_client`.
+  - `docs/api/openapi.yaml`: `retention_days` com `maximum: 3650`; e-mail único sem diferenciar maiúsculas. `docs/api/README.md`: link para o schema e índices que eram proposta.
+  - `.ai/architecture.md` (persistência, índices, ADR-020 a ADR-022), `.ai/standards.md` (acesso ao MongoDB), `.ai/tech-stack.md` (serviço `migrate`) e `.ai/business-rules.md` (pontos em aberto do schema).
+- Verificação:
+  - `scripts/startup.sh` com o volume do MongoDB apagado: `migrate` cria as 6 coleções e 12 índices (fora os de `_id`) e sai com 0; API `healthy` e `/health` 200. `docker compose run --rm migrate` de novo reaplica sem erro.
+  - Script assíncrono de verificação (fora do repositório), num banco descartável: 57 de 57 checagens ok. Cobre documentos válidos e recusados de cada coleção, tipos na leitura (UUID, `int`, datas UTC com ms), duplicidades (11000), planos com `explain` de cada filtro do `GET /logs`, paginação por cursor sem pular logs, agregado (soma igual ao total de logs, reexecução sem contar duas vezes, log atrasado) e TTL apagando um log vencido.
+  - `ruff check` e `ruff format --check` (avulsos, via `uvx`; o ruff não está na stack) sem apontamentos; `redocly lint` do contrato válido, com o aviso esperado de `GET /health`.
+- Sem commit neste prompt: o pedido não incluiu commit nem PR.
+- Em aberto (registrado em `.ai/business-rules.md`): máximo de `retention_days`, limite de `message` e `exception`, normalização de `environment`, agendamento do `refresh_log_metrics` e replica set para transações.
+
+## 006 — Commit e PR dos DDLs
+
+- **Data:** 2026-09-29
+- **Branch:** `feat/mongodb-ddl`
+- **PR:** #7
+
+**Prompt**
+
+> Pode commitar e subir uma PR
+
+**Executado**
+
+- Commit `e4339a2` com as mudanças do 005 (código do schema, `compose.yaml`, `docs/database/README.md`, contrato e `.ai/`). O `.env` ficou fora.
+- Push de `feat/mongodb-ddl` e PR #7 com base em `main`. O repositório não tem template de PR; a descrição segue o formato das PRs anteriores (resumo, como rodar, decisões a validar, verificação e pontos de atenção).
+- Esta entrada foi num segundo commit da mesma PR, depois de a PR existir, para registrar o número dela.
