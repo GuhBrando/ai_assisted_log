@@ -130,3 +130,100 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 - Commit `e4339a2` com as mudanças do 005 (código do schema, `compose.yaml`, `docs/database/README.md`, contrato e `.ai/`). O `.env` ficou fora.
 - Push de `feat/mongodb-ddl` e PR #7 com base em `main`. O repositório não tem template de PR; a descrição segue o formato das PRs anteriores (resumo, como rodar, decisões a validar, verificação e pontos de atenção).
 - Esta entrada foi num segundo commit da mesma PR, depois de a PR existir, para registrar o número dela.
+
+## 007 — Leitura do projeto
+
+- **Data:** 2026-09-29
+- **Branch:** `main`
+- **PR:** —
+
+**Prompt**
+
+> Chat, primeiro leia todo meu projeto e entenda o contexto
+
+**Executado**
+
+- Lidos os arquivos de contexto em `.ai/`, o código Python, o contrato OpenAPI, a configuração Docker, o lock de dependências e as sete páginas de `docs/log_api_system_documentation.pdf`.
+- Confirmado que, naquele momento, o código implementava apenas `GET /health` e não havia testes; nenhum arquivo foi alterado e a árvore Git permaneceu limpa.
+- O registro deste prompt foi adiado para o próximo commit, conforme `AGENTS.md`.
+
+## 008 — Planejamento inicial do frontend
+
+- **Data:** 2026-09-29
+- **Branch:** `main`
+- **PR:** —
+
+**Prompt**
+
+> Com base na análise que você já fez do projeto, quero agora montar o **planejamento inicial do frontend**.
+>
+> Ainda não implemente nada.
+>
+> Use os contratos, IDs, estruturas, endpoints e limitações que você já identificou anteriormente. Não invente novos contratos se eles não forem necessários.
+>
+> A ideia inicial é utilizar **Electron** para criar a aplicação desktop. Caso você identifique uma alternativa claramente melhor para a arquitetura atual, pode apontar, mas mantenha a recomendação objetiva.
+>
+> O frontend será uma ferramenta de análise de logs voltada para desenvolvedores, com foco em tornar a identificação de problemas rápida e visual.
+>
+> Quero uma interface simples, profissional e com bastante informação útil, evitando apenas exibir o log bruto.
+>
+> O planejamento deve considerar principalmente:
+>
+> - estrutura base do frontend;
+> - integração com Electron;
+> - comunicação com o backend já existente;
+> - organização dos componentes;
+> - tela principal de logs;
+> - busca;
+> - filtros;
+> - separação por nível/severidade;
+> - visualização de detalhes de um log;
+> - stack trace;
+> - uso dos IDs e dados já existentes para facilitar correlação entre eventos;
+> - performance para grandes quantidades de logs;
+> - possibilidade futura de logs em tempo real.
+>
+> Também considere que a interface deve facilitar o entendimento do problema apenas olhando para a tela, destacando informações importantes sem poluir visualmente.
+>
+> Inclua no planejamento as alterações necessárias em:
+>
+> - Tech Stack;
+> - README;
+> - estrutura de pastas;
+> - dependências;
+> - configuração do Electron.
+>
+> Organize o plano em **etapas de implementação pequenas e sequenciais**, indicando o objetivo de cada etapa e quais arquivos ou áreas do projeto provavelmente serão afetados.
+>
+> Não escreva código ainda.
+>
+> No final, destaque apenas:
+>
+> 1. stack recomendada para o frontend;
+> 2. arquitetura sugerida;
+> 3. ordem de implementação;
+> 4. riscos ou pontos que precisam de atenção antes de começar.
+
+**Executado**
+
+- Conferidos os endpoints e limites do contrato e as recomendações oficiais de Electron e das bibliotecas propostas. Nenhum arquivo foi alterado.
+- Entregue no chat um plano para Electron, React e TypeScript com integração à API, tela de logs, filtros, investigação por `correlation_id`, paginação e testes.
+- Decisões respondidas pelo usuário: API local fixa em `127.0.0.1:8000`, busca apenas na página carregada e Windows como primeira plataforma empacotada.
+- O registro deste prompt foi adiado para o próximo commit, conforme `AGENTS.md`.
+
+## 009 — Publicar o plano de frontend
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-plan`
+- **PR:** #8
+
+**Prompt**
+
+> Chat, gere a PR para subir o "C:\Users\[removido]\Downloads\Planejamento inicial do frontend desktop.md" Ao repositorio, crie dentro do .ai a pastaa plans e adicione
+
+**Executado**
+
+- Criado `.ai/plans/Planejamento inicial do frontend desktop.md` com o conteúdo do arquivo fornecido. O link absoluto do contrato foi convertido para `../../docs/api/openapi.yaml`, para funcionar no repositório sem divulgar um caminho pessoal.
+- Criada a branch `codex/frontend-plan` a partir de `main`; commit `f807f11`, push e PR #8.
+- A PR foi criada pela API do GitHub com a credencial já configurada no Git, sem exibir o segredo. Nenhum código ou contrato público foi alterado.
+- Verificação: comparação entre o arquivo fornecido e a cópia identificou apenas a alteração do link; revisão do diff e `git diff --check` antes da entrega.
