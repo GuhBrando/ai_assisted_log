@@ -1,7 +1,7 @@
 # Arquitetura
 
 > Fonte: `docs/log_api_system_documentation.pdf` (API de Logs — Documento do Sistema, 22/09/2026).
-> Complementos posteriores ao documento: tags (ADR-015), token de acesso temporário (ADR-016), contrato da API (ADR-017 a ADR-019) e schema do banco (ADR-020 a ADR-022).
+> Complementos posteriores ao documento: tags (ADR-015), token de acesso temporário (ADR-016), contrato da API (ADR-017 a ADR-019), schema do banco (ADR-020 a ADR-022), Clean Architecture (ADR-023) e front-end em Electron (ADR-024).
 > Stack e versões: [tech-stack.md](tech-stack.md) · Padrões de código: [standards.md](standards.md) · Domínio e regras: [business-rules.md](business-rules.md).
 
 ## Visão geral
@@ -11,6 +11,8 @@ API multi-cliente que recebe, por um único endpoint (`POST /logs`), os logs env
 A aplicação troca a sua API key por um token de acesso de 1 hora (`POST /auth/token`) e envia os logs com esse token no cabeçalho `Authorization: Bearer`. O cliente e a aplicação donos do log vêm dessa credencial, nunca de um campo do corpo.
 
 Escopo desta versão: ingestão de logs, cadastro de clientes, aplicações e usuários, retenção automática por cliente, painel de consulta de logs e alertas. Complementos: tags em aplicações e logs, token de acesso de 1 hora.
+
+O sistema segue **Clean Architecture** (ADR-023): as regras de negócio ficam no centro e não dependem de framework, banco ou interface. O front-end é uma aplicação desktop em **Electron** (ADR-024), que consome a API pelo contrato OpenAPI.
 
 ## Componentes
 
@@ -35,6 +37,32 @@ App do cliente
 | `LogService` | Valida `information_data`, mascara dados sensíveis, junta as tags, monta o `LogDocument` e grava |
 | MongoDB | Persistência, validação dos documentos, índices e remoção de logs vencidos por TTL |
 | `migrate` | Aplica o schema do MongoDB (validators, collation, índices) antes de a API subir (ADR-020) |
+
+## Estrutura em camadas (Clean Architecture)
+
+O backend é organizado em quatro camadas. A regra de dependência é uma só: o código só depende de camadas mais internas, nunca de camadas mais externas (ADR-023).
+
+```
+Interface (API)  ─▶  Aplicação (casos de uso)  ─▶  Domínio
+Infraestrutura   ─▶  Aplicação (implementa as portas)  ─▶  Domínio
+```
+
+| Camada | Conteúdo | Pode depender de |
+|---|---|---|
+| Domínio (`app/domain/`) | Entidades, enums (`LogLevel`), limites (`constraints.py`) e regras de negócio | Nada além da linguagem |
+| Aplicação | Casos de uso (como o registro de log e a emissão de token) e as portas (interfaces) que eles precisam, como repositórios | Domínio |
+| Infraestrutura (`app/infrastructure/`) | Implementação das portas: MongoDB (cliente, `migrate`, `ddl`), JWT e hash de senha e de API key | Aplicação e domínio |
+| Interface (API) | Rotas FastAPI, dependências de autenticação, schemas Pydantic de entrada e saída, erros Problem Details | Aplicação e domínio |
+
+Hoje o código tem as camadas de domínio e de infraestrutura. As de aplicação e de interface entram conforme os casos de uso forem implementados. O `app/main.py` é o ponto de composição: liga as implementações da infraestrutura às portas dos casos de uso.
+
+## Front-end (Electron)
+
+O front-end é uma aplicação desktop em Electron para o painel de consulta de logs, os cadastros e os alertas (ADR-024).
+
+- **Só fala com a API.** O Electron nunca acessa o MongoDB. Todo dado passa pelos endpoints do contrato [`docs/api/openapi.yaml`](../docs/api/openapi.yaml), com a credencial de usuário (`POST /auth/login`, hoje proposta).
+- **Mesma regra de dependência.** No front-end, o acesso à API e as regras da tela ficam separados da interface: componentes visuais dependem dos casos de uso, e não o contrário.
+- **Tipos e mocks a partir do contrato.** Como no ADR-017, o front-end gera tipos e mocks a partir do OpenAPI e pode ser desenvolvido antes de o backend existir.
 
 ## Fluxo de emissão do token (`POST /auth/token`)
 
@@ -143,6 +171,8 @@ Os índices de listagem terminam em `_id` para desempatar logs com o mesmo `occu
 | [020](#adr-020--schema-do-banco-como-código-python-assíncrono) | Schema do banco como código Python assíncrono |
 | [021](#adr-021--modelo-dimensional-star-schema-onde-há-agregação) | Modelo dimensional (star schema) onde há agregação |
 | [022](#adr-022--unicidade-sem-diferenciar-maiúsculas-por-collation) | Unicidade sem diferenciar maiúsculas por collation |
+| [023](#adr-023--clean-architecture-no-backend) | Clean Architecture no backend |
+| [024](#adr-024--front-end-desktop-em-electron) | Front-end desktop em Electron |
 
 Todas com status **Aceita**.
 
@@ -291,3 +321,24 @@ Todas com status **Aceita**.
 - **Decisão:** `users` é criada com a collation padrão `{ locale: "en", strength: 2 }`: o índice único e todas as consultas ignoram maiúsculas, sem o backend passar collation. Em `applications`, a collation fica só no índice `{ customerId: 1, name: 1 }`, para a busca por `apiKeys.keyHash` continuar exata.
 - **Alternativa descartada:** converter para minúsculas no backend. Depende de toda escrita e toda consulta lembrarem da conversão; a collation vale no banco para qualquer caminho.
 - **Consequências:** o e-mail é gravado como foi digitado. Consultas por nome de aplicação passam `NAME_COLLATION` para usar o índice.
+
+### ADR-023 — Clean Architecture no backend
+
+- **Contexto:** o backend mistura, por natureza, regras de negócio (limites, mascaramento, retenção, isolamento por cliente) e detalhes técnicos (FastAPI, PyMongo, JWT). Sem separação, trocar o banco ou o framework, ou testar uma regra sem subir a infraestrutura, fica caro.
+- **Decisão:** adotar Clean Architecture com quatro camadas: domínio, aplicação (casos de uso e portas), infraestrutura e interface (API). A dependência aponta sempre para dentro. A infraestrutura implementa as portas definidas pela camada de aplicação, e o `app/main.py` liga as duas.
+- **Alternativa descartada:** rotas chamando o PyMongo direto (camadas por tipo técnico, sem regra de dependência). É mais curto no início, mas acopla as regras ao banco e ao framework.
+- **Consequências:**
+  - As regras de negócio e os casos de uso podem ser testados com repositórios falsos, sem banco.
+  - O ADR-014 continua valendo para os testes de endpoint e de repositório, que rodam contra MongoDB real.
+  - Cada caso de uso novo pede uma porta, uma implementação e uma rota, o que aumenta o número de arquivos.
+  - O `ddl` e o `migrate` (ADR-020) ficam na infraestrutura, e os limites compartilhados ficam no domínio.
+
+### ADR-024 — Front-end desktop em Electron
+
+- **Contexto:** o escopo inclui o painel de consulta de logs, os cadastros e os alertas, que precisam de uma interface para os usuários da plataforma.
+- **Decisão:** o front-end é uma aplicação desktop em Electron, que consome a API somente pelos endpoints do contrato OpenAPI (ADR-017), com token de usuário. Ele segue a mesma regra de dependência do ADR-023 e não acessa o MongoDB.
+- **Consequências:**
+  - O front-end e o backend evoluem em paralelo, ligados só pelo contrato.
+  - O token do usuário fica em um aplicativo instalado na máquina dele, então o local de armazenamento precisa ser definido com cuidado.
+  - Há um aplicativo para distribuir e atualizar em cada máquina.
+- **Em aberto:** framework de interface do Electron, armazenamento seguro do token, e distribuição e atualização do aplicativo.
