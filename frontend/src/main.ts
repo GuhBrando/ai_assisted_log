@@ -87,7 +87,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1024,
+    minWidth: 760,
     minHeight: 680,
     backgroundColor: '#0b1019',
     title: 'Log Insight',

@@ -13,9 +13,10 @@
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
     "generate:api": "openapi-typescript ../docs/api/openapi.yaml -o src/api/schema.d.ts",
-    "mock": "prism mock ../docs/api/openapi.yaml -h 127.0.0.1 -p 4010",
+    "mock": "node scripts/mock.mjs",
     "test": "vitest run",
-    "build": "electron-forge package"
+    "build": "electron-forge package",
+    "verify:mock": "node scripts/verify-mock.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",

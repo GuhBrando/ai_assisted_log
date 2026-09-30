@@ -25,7 +25,7 @@ npm run mock   # Prism em http://127.0.0.1:4010
 npm start      # Electron em desenvolvimento; usa somente o Prism local
 ```
 
-O login de desenvolvimento pode usar `ana@example.com` e `uma-senha-longa`, exemplos do contrato. O Prism responde com dados de exemplo; não persiste mudanças e pode repetir a mesma página mesmo quando retorna `next_cursor`. O frontend **empacotado** usa exclusivamente a API local em `http://127.0.0.1:8000`.
+O login de desenvolvimento pode usar `ana@example.com` e `uma-senha-longa`, exemplos do contrato. O Prism na porta 4010 valida as respostas contra o OpenAPI e encaminha para uma massa determinística local de 1.600 logs (porta interna 4011). A massa cobre fluxos correlacionados, erros, retries, tags, períodos vazios e páginas sucessivas; não usa MongoDB nem persiste mudanças. O frontend **empacotado** usa exclusivamente a API local em `http://127.0.0.1:8000`.
 
 Comandos adicionais em `frontend/`:
 
@@ -34,10 +34,11 @@ npm run generate:api  # regenera src/api/schema.d.ts do OpenAPI
 npm run typecheck
 npm run lint
 npm test
+npm run verify:mock   # com npm run mock ativo: paginação e filtros via Prism
 npm run package       # aplicativo Windows em out/
 npm run make          # instalador Windows em out/make/
 ```
 
-A tela oferece filtros por aplicação, nível mínimo, período, correlation ID e tags, além de busca textual **somente na página carregada**. Contagens e gráfico usam apenas os registros dessa página. A paginação usa o `next_cursor` opaco. Detalhes e stack trace vêm de `GET /logs/{log_id}`. A sessão termina ao fechar o aplicativo ou ao receber 401; o token fica apenas na memória do processo principal do Electron.
+A tela oferece filtros por aplicação, nível mínimo, período, correlation ID e tags, além de busca textual **somente na página carregada**. Os filtros de período e os timestamps exibem `DD/MM/YYYY HH:MM:SS` no fuso local; a requisição usa ISO 8601 com fuso, conforme o contrato. Início é inclusivo e Fim é exclusivo. Tags sugeridas vêm apenas da página carregada. Contagens e gráfico usam apenas os registros dessa página. A paginação usa o `next_cursor` opaco e confirma que a próxima página contém registros antes de habilitar a navegação; consulta somente a página atual e a próxima. Detalhes e stack trace vêm de `GET /logs/{log_id}`. A sessão termina ao fechar o aplicativo ou ao receber 401; o token fica apenas na memória do processo principal do Electron.
 
 Busca global, agregações completas e tempo real aguardam contratos de backend próprios. O backend ainda precisa implementar e validar `POST /auth/login`, `GET /logs`, `GET /logs/{log_id}` e `GET /applications` antes de testes de integração reais. O instalador Windows gerado nesta etapa não é assinado digitalmente.

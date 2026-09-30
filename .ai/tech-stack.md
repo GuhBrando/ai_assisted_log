@@ -38,7 +38,7 @@ O frontend em `frontend/` usa `npm` e `package-lock.json`, separadamente do `uv.
 | Linguagem | TypeScript | 5.9.3 | Tipagem do cliente e do IPC |
 | Estado remoto | TanStack Query | 5.104.0 | Cache por filtros, cursor e detalhe |
 | Contrato | openapi-typescript | 7.13.0 | Geração de `src/api/schema.d.ts` a partir de `docs/api/openapi.yaml` |
-| Mock de desenvolvimento | Prism CLI | 5.14.2 | Exemplos do OpenAPI em `127.0.0.1:4010` |
+| Mock de desenvolvimento | Prism CLI | 5.14.2 | Proxy de validação OpenAPI em `127.0.0.1:4010`, com 1.600 logs determinísticos servidos por upstream local em `127.0.0.1:4011` |
 | Verificação | Vitest, oxlint, oxfmt | 5.0.2 / 1.86.0 / 0.41.0 | Testes, lint e formatação |
 
 O aplicativo em desenvolvimento usa apenas o Prism na porta 4010; o pacote Windows usa a API local fixa na porta 8000. O renderer não chama a API diretamente. O token de usuário fica em memória no processo principal. A versão inicial não persiste sessão e não possui atualização automática.

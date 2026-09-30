@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { DateTimeField } from './DateTimeField';
+import { TagField } from './TagField';
 import type { LogQuery, LogRead } from '../contracts';
 import {
   displayTime,
   draftToQuery,
+  parseDateTime,
   levelNames,
   levels,
   matchesSearch,
@@ -246,13 +249,64 @@ export function Logs({
         await window.logApi.listLogs({ ...query, cursor }),
         onExpired,
       ),
-    placeholderData: (previous) => previous,
+    staleTime: 30000,
   });
   const items = logs.data?.items ?? [];
+  const nextCursor = logs.data?.next_cursor;
+  const nextPreview = useQuery({
+    queryKey: ['logs', query, nextCursor],
+    queryFn: async () =>
+      requireData(
+        await window.logApi.listLogs({
+          ...query,
+          cursor: nextCursor ?? undefined,
+        }),
+        onExpired,
+      ),
+    enabled:
+      logs.isSuccess &&
+      items.length > 0 &&
+      Boolean(nextCursor) &&
+      nextCursor !== cursor,
+    staleTime: 30000,
+  });
+  const canPrevious =
+    pageIndex > 0 && logs.isSuccess && items.length > 0 && !logs.isFetching;
+  const canNext =
+    logs.isSuccess &&
+    items.length > 0 &&
+    Boolean(nextCursor) &&
+    nextCursor !== cursor &&
+    nextPreview.isSuccess &&
+    (nextPreview.data?.items.length ?? 0) > 0 &&
+    !logs.isFetching;
+  const suggestedTags = useMemo(
+    () => [...new Set(items.flatMap((log) => log.tags))].sort(),
+    [items],
+  );
+  const startDate = draft.occurred_from
+    ? parseDateTime(draft.occurred_from)
+    : null;
+  const endDate = draft.occurred_to ? parseDateTime(draft.occurred_to) : null;
+  const startError =
+    draft.occurred_from && !startDate ? 'Use DD/MM/AAAA HH:MM:SS.' : '';
+  const endError =
+    draft.occurred_to && !endDate
+      ? 'Use DD/MM/AAAA HH:MM:SS.'
+      : startDate && endDate && endDate <= startDate
+        ? 'O fim deve ser posterior ao início.'
+        : '';
   const visible = useMemo(
     () => items.filter((log) => matchesSearch(log, search)),
     [items, search],
   );
+  useEffect(() => {
+    if (logs.isSuccess && items.length === 0 && pageIndex > 0) {
+      setCursors((current) => current.slice(0, pageIndex));
+      setPageIndex(pageIndex - 1);
+      return;
+    }
+  }, [logs.isSuccess, items.length, pageIndex]);
   useEffect(() => {
     if (selectedId && !items.some((log) => log.id === selectedId))
       setSelectedId(null);
@@ -265,6 +319,7 @@ export function Logs({
       setCursors([undefined]);
       setPageIndex(0);
       setSelectedId(null);
+      setSearch('');
       setFilterError('');
     } catch (error) {
       setFilterError(
@@ -279,18 +334,27 @@ export function Logs({
     setPageIndex(0);
     setFilterError('');
     setSelectedId(null);
+    setSearch('');
   }
   function setCorrelation(id: string): void {
-    const next = { ...draft, correlation_id: id };
-    setDraft(next);
+    setDraft({
+      application_id: query.application_id ?? '',
+      min_level: query.min_level === undefined ? '' : String(query.min_level),
+      correlation_id: id,
+      occurred_from: query.occurred_from
+        ? displayTime(query.occurred_from)
+        : '',
+      occurred_to: query.occurred_to ? displayTime(query.occurred_to) : '',
+      tags: query.tags?.join(', ') ?? '',
+    });
     setQuery({ ...query, correlation_id: id, cursor: undefined });
     setCursors([undefined]);
     setPageIndex(0);
     setSelectedId(null);
   }
   function nextPage(): void {
-    const next = logs.data?.next_cursor;
-    if (!next) return;
+    const next = nextCursor;
+    if (!next || !canNext) return;
     setCursors((current) => [...current.slice(0, pageIndex + 1), next]);
     setPageIndex(pageIndex + 1);
     setSelectedId(null);
@@ -341,9 +405,12 @@ export function Logs({
             <span className="muted">Os filtros são combinados com E</span>
           </div>
           <div className="filter-grid">
-            <label>
-              Aplicação
+            <div className="filter-field">
+              <div className="field-head">
+                <label htmlFor="application-filter">Aplicação</label>
+              </div>
               <select
+                id="application-filter"
                 value={draft.application_id}
                 onChange={(event) =>
                   setDraft({ ...draft, application_id: event.target.value })
@@ -356,10 +423,14 @@ export function Logs({
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Nível mínimo
+              <span className="field-feedback">&nbsp;</span>
+            </div>
+            <div className="filter-field">
+              <div className="field-head">
+                <label htmlFor="level-filter">Nível mínimo</label>
+              </div>
               <select
+                id="level-filter"
                 value={draft.min_level}
                 onChange={(event) =>
                   setDraft({ ...draft, min_level: event.target.value })
@@ -372,47 +443,50 @@ export function Logs({
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Início <span className="field-hint">inclusive</span>
+              <span className="field-feedback">&nbsp;</span>
+            </div>
+            <DateTimeField
+              id="occurred-from"
+              label="Início"
+              hint="inclusive"
+              value={draft.occurred_from}
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, occurred_from: value }))
+              }
+              error={startError}
+            />
+            <DateTimeField
+              id="occurred-to"
+              label="Fim"
+              hint="exclusivo"
+              value={draft.occurred_to}
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, occurred_to: value }))
+              }
+              minValue={draft.occurred_from}
+              error={endError}
+            />
+            <div className="filter-field wide-field">
+              <div className="field-head">
+                <label htmlFor="correlation-filter">Correlation ID</label>
+              </div>
               <input
-                type="datetime-local"
-                value={draft.occurred_from}
-                onChange={(event) =>
-                  setDraft({ ...draft, occurred_from: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Fim <span className="field-hint">exclusivo</span>
-              <input
-                type="datetime-local"
-                value={draft.occurred_to}
-                onChange={(event) =>
-                  setDraft({ ...draft, occurred_to: event.target.value })
-                }
-              />
-            </label>
-            <label className="wide-field">
-              Correlation ID
-              <input
+                id="correlation-filter"
                 value={draft.correlation_id}
                 onChange={(event) =>
                   setDraft({ ...draft, correlation_id: event.target.value })
                 }
                 placeholder="UUID do fluxo"
               />
-            </label>
-            <label className="wide-field">
-              Tags <span className="field-hint">separadas por vírgula</span>
-              <input
-                value={draft.tags}
-                onChange={(event) =>
-                  setDraft({ ...draft, tags: event.target.value })
-                }
-                placeholder="team:payments, feature:pix"
-              />
-            </label>
+              <span className="field-feedback">&nbsp;</span>
+            </div>
+            <TagField
+              value={draft.tags}
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, tags: value }))
+              }
+              suggestions={suggestedTags}
+            />
           </div>
           {filterError && (
             <p className="form-error filter-error" role="alert">
@@ -432,7 +506,11 @@ export function Logs({
             >
               Limpar filtros
             </button>
-            <button className="primary-button" type="submit">
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={Boolean(startError || endError)}
+            >
               Aplicar filtros
             </button>
           </div>
@@ -462,7 +540,11 @@ export function Logs({
             </div>
           </div>
           <div className={`logs-layout ${selected ? 'with-detail' : ''}`}>
-            <div className="log-list" aria-label="Lista de logs">
+            <div
+              className="log-list"
+              aria-label="Lista de logs"
+              aria-busy={logs.isPending}
+            >
               {logs.isPending && (
                 <div className="empty-state">Carregando logs…</div>
               )}
@@ -502,7 +584,7 @@ export function Logs({
                     {levels[log.level]}
                   </span>
                   <span className="log-main">
-                    <strong>{log.message}</strong>
+                    <strong title={log.message}>{log.message}</strong>
                     <span className="log-secondary">
                       <span>{log.application_name}</span>
                       <span>· {log.environment}</span>
@@ -536,21 +618,24 @@ export function Logs({
             <span>
               Página {pageIndex + 1} · até {query.limit ?? 50} registros por
               página · {items.length} carregados
+              {nextCursor && nextPreview.isPending && items.length > 0
+                ? ' · verificando próxima página…'
+                : ''}
             </span>
             <div>
               <button
                 className="quiet-button"
-                disabled={pageIndex === 0 || logs.isFetching}
+                disabled={!canPrevious}
                 onClick={() => {
                   setPageIndex(pageIndex - 1);
                   setSelectedId(null);
                 }}
               >
-                Anterior
+                Voltar
               </button>
               <button
                 className="quiet-button"
-                disabled={!logs.data?.next_cursor || logs.isFetching}
+                disabled={!canNext}
                 onClick={nextPage}
               >
                 Próxima

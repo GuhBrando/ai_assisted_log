@@ -387,3 +387,362 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 
 - O modo de desenvolvimento usa somente Prism em `127.0.0.1:4010`, sem fixtures ou servidor alternativo. O pacote Windows usa a API local em `127.0.0.1:8000`.
 - Prism validado com login, lista de logs, detalhe e aplicações. Respostas estáticas podem repetir página mesmo com `next_cursor`.
+
+## 013 — Instruções de qualidade e contexto
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> # AGENTS.md instructions for [removido]
+>
+> <INSTRUCTIONS>
+> # Revisão de qualidade após alterações
+>
+> Depois de concluir uma tarefa que altere artefatos de um repositório, faça exatamente uma revisão final antes da resposta ao usuário:
+>
+> - No fluxo normal, execute `$review-after-change` no próprio chat.
+> - Acione o agente personalizado `quality_orchestrator` em vez da revisão local somente quando o usuário pedir explicitamente ou quando a mudança envolver autenticação/autorização, dinheiro, operação destrutiva, migration, concorrência, integridade de dados, contrato público ou fronteira de segurança.
+> - Não revise tarefas apenas de leitura, explicação, diagnóstico sem implementação ou planejamento.
+> - Não crie subagentes por padrão. Delegue no máximo uma análise somente leitura quando houver uma pergunta concreta e independente cuja resposta possa alterar a conclusão. Delimite no prompt os arquivos, símbolos e a dúvida; não peça revisão genérica.
+> - Ao acionar `quality_orchestrator`, informe apenas o objetivo original, os arquivos alterados nesta tarefa, as validações já executadas e o trabalho preexistente que deve ser preservado. Não execute também `$review-after-change` no chat principal.
+> - Nunca reinvoque o orquestrador por causa de correções feitas durante a própria revisão. Se a sessão atual já for o `quality_orchestrator`, nunca crie outro agente com o mesmo papel.
+> - Respeite os status: `passed` permite a entrega; `plan-required` exige anexar o plano e declarar a pendência média; `blocked` impede declarar a tarefa concluída até correção ou aceitação explícita do risco.
+> - Preserve o escopo e as alterações preexistentes do usuário. Inclua na resposta final o resultado da revisão e somente os checks efetivamente executados.
+>
+> --- project-doc ---
+>
+> # AGENTS.md
+>
+> Orientações para agentes de IA (LLMs) que trabalham neste repositório.
+>
+> ## Contexto do projeto
+>
+> Antes de mudar código ou documentação, ler os arquivos de contexto em `.ai/`:
+>
+> | Arquivo | Conteúdo |
+> |---|---|
+> | [.ai/business-rules.md](.ai/business-rules.md) | Domínio, regras de negócio, códigos de resposta e pontos em aberto |
+> | [.ai/architecture.md](.ai/architecture.md) | Componentes, fluxos, persistência e decisões (ADRs) |
+> | [.ai/standards.md](.ai/standards.md) | Padrões de código |
+> | [.ai/tech-stack.md](.ai/tech-stack.md) | Stack aprovada, versões e o que não usar |
+> | [.ai/prompts.md](.ai/prompts.md) | Registro dos prompts enviados a LLMs e do que foi executado |
+>
+> ## Registro de prompts
+>
+> Todo prompt enviado a uma LLM para trabalhar neste repositório é registrado em [.ai/prompts.md](.ai/prompts.md), junto com tudo o que foi executado. Assim, qualquer mudança pode ser rastreada até o pedido que a originou.
+>
+> - **Todo prompt entra:** inclusive perguntas sem mudança de arquivo, correções no meio de uma tarefa e prompts interrompidos.
+> - **Quem registra** é a própria LLM que recebeu o prompt, ao terminar de executá-lo.
+> - **Prompt na íntegra,** como foi escrito. Não resumir nem corrigir.
+> - **Só acrescentar:** uma entrada nova no fim do arquivo, com o número seguinte. Não reescrever nem apagar entradas antigas; uma correção vira uma entrada nova.
+> - **Mesmo commit:** a entrada vai no mesmo commit (ou PR) das mudanças que o prompt gerou. Prompt sem mudança de arquivo entra no próximo commit.
+> - **Sem segredos nem dados pessoais:** API keys, tokens, senhas, o conteúdo do `.env` e dados pessoais viram `[removido]`, tanto no prompt quanto no que foi executado.
+>
+> ### Formato da entrada
+>
+> ```markdown
+> ## NNN — Título curto do pedido
+>
+> - **Data:** AAAA-MM-DD
+> - **Branch:** `nome-da-branch` (uma ou mais)
+> - **PR:** #N (ou —)
+>
+> **Prompt**
+>
+> > Texto do prompt na íntegra.
+>
+> **Executado**
+>
+> - Arquivos criados, alterados ou removidos, e o que mudou em cada um.
+> - Comandos que mudaram algum estado (build, commit, push, PR) e as verificações feitas, com o resultado.
+> - Decisões tomadas e o que ficou em aberto.
+> ```
+>
+> </INSTRUCTIONS>
+
+**Executado**
+
+- Instruções lidas e aplicadas à tarefa de ajustes da tela de logs; contexto em `.ai/`, contrato e README consultados.
+- Registro de prompts incluído no mesmo commit das alterações; revisão final executada antes da entrega.
+
+## 014 — Revisar UX e funcionamento da tela de logs
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Atue como um **UX Senior**, com foco também em validação funcional da tela de logs.
+>
+> Analise a implementação atual da tela e faça os ajustes necessários para melhorar **usabilidade, consistência visual e comportamento funcional**, sem alterar regras de negócio fora deste escopo.
+>
+> Os campos **Início, Fim e Tags já existem**. Não os recrie. Avalie a implementação atual e verifique principalmente:
+>
+> - alinhamento;
+> - espaçamento;
+> - responsividade;
+> - hierarquia visual;
+> - consistência entre os componentes;
+> - comportamento ao abrir seletores e dropdowns;
+> - comportamento quando os campos estão preenchidos;
+> - combinação entre filtros;
+> - mudanças de tamanho ou desalinhamentos durante a interação;
+> - legibilidade geral da tela.
+>
+> A interface deve continuar organizada mesmo quando os campos estiverem abertos, preenchidos ou exibindo conteúdos maiores.
+>
+> ### Data e hora
+>
+> Padronize a exibição e utilização de data/hora no formato:
+>
+> `DD/MM/YYYY HH:MM:SS`
+>
+> Esse formato deve ser utilizado:
+>
+> - nos filtros de Início e Fim;
+> - na exibição dos timestamps dos logs;
+> - na representação visual dos valores selecionados.
+>
+> Avalie e implemente uma experiência melhor para os campos **Início** e **Fim**, preferencialmente utilizando um **date/time picker com calendário**, mantendo o formato final `DD/MM/YYYY HH:MM:SS`.
+>
+> O usuário deve conseguir selecionar a data visualmente e definir o horário sem depender exclusivamente de digitação manual.
+>
+> Caso a solução utilizada permita, mantenha também a possibilidade de edição manual.
+>
+> Valide os seguintes cenários:
+>
+> - apenas Início preenchido;
+> - apenas Fim preenchido;
+> - Início + Fim;
+> - Início maior que Fim;
+> - valor inválido;
+> - limpeza de um campo;
+> - limpeza dos dois campos;
+> - abertura e fechamento do calendário;
+> - troca rápida entre datas;
+> - alteração do horário;
+> - interação por teclado, quando suportada.
+>
+> Não introduza formatos diferentes entre frontend, filtro e apresentação visual.
+>
+> ### Paginação
+>
+> Revise o funcionamento atual dos botões **Voltar** e **Próxima**.
+>
+> Existe atualmente um problema em que **Próxima pode permanecer habilitado mesmo quando não existe uma próxima página**.
+>
+> Também existe um cenário em que, após clicar em Próxima, o botão **Voltar** passa a ficar habilitado mesmo sem existirem logs válidos naquela navegação.
+>
+> Os botões devem refletir a existência real de páginas e registros.
+>
+> Comportamento esperado:
+>
+> - primeira página sem próxima página → Voltar desabilitado / Próxima desabilitado;
+> - primeira página com próxima página → Voltar desabilitado / Próxima habilitado;
+> - página intermediária → ambos habilitados;
+> - última página → Voltar habilitado / Próxima desabilitado;
+> - nenhum resultado → ambos desabilitados.
+>
+> Não valide apenas o estado visual.
+>
+> Confirme que:
+>
+> - a página realmente possui registros antes de permitir navegação;
+> - não é possível navegar para uma página vazia;
+> - alterar filtros atualiza corretamente o estado da paginação;
+> - limpar filtros recalcula corretamente as páginas;
+> - alterar filtros enquanto estiver em uma página avançada não mantém um índice de página inválido;
+> - o usuário não consegue ficar preso em uma página sem resultados apenas por causa do estado anterior da paginação.
+>  - não é possível selecionar uma data fim menor que a data inicio;
+> ### Massa de logs para testes
+>
+> Crie no ambiente de desenvolvimento, utilizando o **Prisma**, uma massa de aproximadamente **1.000 a 2.000 logs**.
+>
+> Essa massa existe exclusivamente para validação e testes da tela.
+>
+> Não gere apenas registros totalmente aleatórios.
+>
+> Uma parte significativa dos logs deve representar **fluxos relacionados**, permitindo acompanhar operações completas.
+>
+> Exemplo conceitual:
+>
+> `Operação iniciada → validação → processamento → chamada externa → resposta recebida → conclusão`
+>
+> Crie diferentes tipos de fluxo, incluindo:
+>
+> - fluxos concluídos com sucesso;
+> - fluxos interrompidos por erro;
+> - erro seguido de retry;
+> - múltiplas tentativas da mesma operação;
+> - operações acontecendo simultaneamente;
+> - logs isolados;
+> - fluxos curtos;
+> - fluxos maiores;
+> - diferentes tags;
+> - logs com a mesma tag;
+> - logs com múltiplas tags, caso o sistema suporte;
+> - timestamps muito próximos;
+> - vários logs dentro do mesmo segundo;
+> - mensagens curtas;
+> - mensagens longas;
+> - períodos com muitos registros;
+> - períodos com poucos registros;
+> - intervalos sem registros.
+>
+> Os logs devem estar distribuídos em diferentes datas e horários para permitir testar adequadamente os filtros **Início** e **Fim**.
+>
+> Crie também situações em que diferentes operações estejam intercaladas cronologicamente.
+>
+> Exemplo:
+>
+> `Fluxo A - iniciado`
+> `Fluxo B - iniciado`
+> `Fluxo A - processamento`
+> `Fluxo C - iniciado`
+> `Fluxo B - erro`
+> `Fluxo A - concluído`
+> `Fluxo B - retry`
+>
+> Isso deve ajudar a identificar problemas reais de leitura e ordenação, em vez de criar uma sequência artificialmente perfeita.
+>
+> Alguns fluxos relacionados também devem acabar divididos entre páginas diferentes para validar o comportamento da paginação.
+>
+> ### Validação dos filtros
+>
+> Utilize os logs gerados para testar de fato os filtros existentes.
+>
+> Valide:
+>
+> - sem filtros;
+> - somente Início;
+> - somente Fim;
+> - Início + Fim;
+> - somente Tags;
+> - combinação de período + Tags;
+> - filtros com muitos resultados;
+> - filtros com poucos resultados;
+> - exatamente um resultado;
+> - nenhum resultado;
+> - alteração de filtros após navegar para páginas seguintes;
+> - limpeza individual de filtros;
+> - limpeza de todos os filtros.
+>
+> Confirme também se a ordenação permanece correta após qualquer combinação de filtros.
+>
+> ### Validação de UX
+>
+> Não faça apenas uma revisão visual estática.
+>
+> Interaja com a tela e procure problemas reais de experiência.
+>
+> Verifique especialmente:
+>
+> - alinhamento dos filtros;
+> - Início e Fim;
+> - seletor de data/hora;
+> - dropdown de Tags;
+> - estados de hover, focus e disabled;
+> - clareza dos botões;
+> - diferença visual entre botão disponível e indisponível;
+> - paginação;
+> - estados vazios;
+> - ordenação cronológica;
+> - legibilidade dos timestamps;
+> - logs relacionados;
+> - mensagens longas;
+> - muitas tags;
+> - overflow;
+> - quebra de linha;
+> - componentes mudando de posição durante a interação;
+> - filtros causando saltos ou alterações desnecessárias no layout.
+>
+> Se a tela possuir loading, valide também o comportamento durante carregamentos e transições entre páginas.
+>
+> ### Performance e comportamento da consulta
+>
+> Os **1.000–2.000 logs existem no banco apenas como massa de testes**.
+>
+> Isso não significa que todos devem ser carregados ou renderizados de uma vez.
+>
+> Verifique se:
+>
+> - a paginação é feita corretamente;
+> - apenas os registros necessários são consultados;
+> - o frontend não recebe todos os logs para posteriormente paginar localmente, caso a arquitetura atual já permita paginação no backend;
+> - filtros e paginação funcionam juntos corretamente;
+> - não existem requisições duplicadas desnecessárias;
+> - não ocorre salto visual relevante durante troca de página ou aplicação de filtros.
+>
+> Não faça mudanças arquiteturais grandes sem necessidade. Corrija apenas o que estiver relacionado ao funcionamento dessa tela.
+>
+> ### Escopo
+>
+> Além dos problemas descritos, procure inconsistências adicionais que apareçam durante os testes.
+>
+> Caso encontre algum problema claramente relacionado à tela de logs, pode corrigi-lo desde que:
+>
+> - a correção seja segura;
+> - esteja dentro deste escopo;
+> - não altere regras de negócio;
+> - não invente novos requisitos;
+> - não faça mudanças desnecessárias em outras áreas do sistema.
+>
+> Ao finalizar, revise novamente a tela utilizando a massa de logs criada e valide os principais fluxos antes de considerar a implementação concluída.
+
+**Executado**
+
+- `frontend/scripts/`: massa determinística de 1.600 logs correlacionados e isolados, com filtros, cursor e validação HTTP pelo Prism; nenhum dado foi gravado no banco.
+- `frontend/src/renderer/`: calendários e horários nos filtros existentes, sugestões de tags da página, timestamps padronizados, paginação confirmada por registros e testes de interação.
+- `frontend/src/index.css`, `frontend/src/main.ts`: controles estáveis, foco/disabled, responsividade e janela mínima de 760 px.
+- `README.md`, `.ai/tech-stack.md`, `docs/api/README.md`: instruções do mock e alcance dos filtros.
+- `npm run typecheck`, `npm run lint`, `npm test` (17 testes), `npm run verify:mock` (1.600 logs, 32 páginas, 10 casos de filtros) e `npm run package`: passaram. Prévia interativa foi interrompida pelo usuário; ele informou que já validou o frontend.
+
+## 015 — Esclarecer mock e sugestões de tags
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Prism na porta 4010, com massa de teste servida pelo mock
+>
+> Sugerir tags da página carregada
+
+**Executado**
+
+- Mantido Prism como API de desenvolvimento na porta 4010; massa determinística servida por upstream local atrás do proxy.
+- Campo Tags existente preservado, com sugestões apenas dos registros carregados na página.
+
+## 016 — Continuar e commitar após validação do frontend
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Pode continuar e fazer os co mmits, ja avalidei o front
+
+**Executado**
+
+- Validação visual do usuário aceita; alterações funcionais, testes e documentação consolidados na branch e enviados à PR #9.
+
+## 017 — Subir alterações pendentes
+
+- **Data:** 2026-09-30
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Pode subir as alterações pendentes
+
+**Executado**
+
+- Verificado o estado da branch e do remoto; alterações já preparadas para commit foram reunidas e enviadas para `origin/codex/frontend-desktop`.
+- Validado o diff antes do commit.

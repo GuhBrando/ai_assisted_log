@@ -17,14 +17,32 @@ export const levelNames = [
   'Critical',
 ] as const;
 
+const pad2 = (number: number): string => String(number).padStart(2, '0');
+
+export function formatDateTime(date: Date): string {
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+export function parseDateTime(value: string): Date | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(
+    value,
+  );
+  if (!match) return null;
+  const [, day, month, year, hour, minute, second] = match.map(Number);
+  const date = new Date(year, month - 1, day, hour, minute, second);
+  return date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day &&
+    date.getHours() === hour &&
+    date.getMinutes() === minute &&
+    date.getSeconds() === second
+    ? date
+    : null;
+}
+
 export function displayTime(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'medium',
-      }).format(date);
+  return Number.isNaN(date.getTime()) ? value : formatDateTime(date);
 }
 
 export function draftToQuery(
@@ -45,15 +63,13 @@ export function draftToQuery(
   if (draft.correlation_id.trim())
     query.correlation_id = draft.correlation_id.trim();
   if (draft.occurred_from) {
-    const start = new Date(draft.occurred_from);
-    if (Number.isNaN(start.getTime()))
-      throw new Error('Data e hora inicial inválidas.');
+    const start = parseDateTime(draft.occurred_from);
+    if (!start) throw new Error('Data e hora inicial inválidas.');
     query.occurred_from = start.toISOString();
   }
   if (draft.occurred_to) {
-    const end = new Date(draft.occurred_to);
-    if (Number.isNaN(end.getTime()))
-      throw new Error('Data e hora final inválidas.');
+    const end = parseDateTime(draft.occurred_to);
+    if (!end) throw new Error('Data e hora final inválidas.');
     query.occurred_to = end.toISOString();
   }
   if (
