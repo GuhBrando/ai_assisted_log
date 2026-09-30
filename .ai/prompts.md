@@ -227,3 +227,163 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 - Criada a branch `codex/frontend-plan` a partir de `main`; commit `f807f11`, push e PR #8.
 - A PR foi criada pela API do GitHub com a credencial já configurada no Git, sem exibir o segredo. Nenhum código ou contrato público foi alterado.
 - Verificação: comparação entre o arquivo fornecido e a cópia identificou apenas a alteração do link; revisão do diff e `git diff --check` antes da entrega.
+
+## 010 — Instruções de trabalho no repositório
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> # AGENTS.md instructions for C:\Users\[removido]\ai_assisted_log
+>
+> <INSTRUCTIONS>
+> # Revisão de qualidade após alterações
+>
+> Depois de concluir uma tarefa que altere artefatos de um repositório, faça exatamente uma revisão final antes da resposta ao usuário:
+>
+> - No fluxo normal, execute `$review-after-change` no próprio chat.
+> - Acione o agente personalizado `quality_orchestrator` em vez da revisão local somente quando o usuário pedir explicitamente ou quando a mudança envolver autenticação/autorização, dinheiro, operação destrutiva, migration, concorrência, integridade de dados, contrato público ou fronteira de segurança.
+> - Não revise tarefas apenas de leitura, explicação, diagnóstico sem implementação ou planejamento.
+> - Não crie subagentes por padrão. Delegue no máximo uma análise somente leitura quando houver uma pergunta concreta e independente cuja resposta possa alterar a conclusão. Delimite no prompt os arquivos, símbolos e a dúvida; não peça revisão genérica.
+> - Ao acionar `quality_orchestrator`, informe apenas o objetivo original, os arquivos alterados nesta tarefa, as validações já executadas e o trabalho preexistente que deve ser preservado. Não execute também `$review-after-change` no chat principal.
+> - Nunca reinvoque o orquestrador por causa de correções feitas durante a própria revisão. Se a sessão atual já for o `quality_orchestrator`, nunca crie outro agente com o mesmo papel.
+> - Respeite os status: `passed` permite a entrega; `plan-required` exige anexar o plano e declarar a pendência média; `blocked` impede declarar a tarefa concluída até correção ou aceitação explícita do risco.
+> - Preserve o escopo e as alterações preexistentes do usuário. Inclua na resposta final o resultado da revisão e somente os checks efetivamente executados.
+>
+> --- project-doc ---
+>
+> # AGENTS.md
+>
+> Orientações para agentes de IA (LLMs) que trabalham neste repositório.
+>
+> ## Contexto do projeto
+>
+> Antes de mudar código ou documentação, ler os arquivos de contexto em `.ai/`:
+>
+> | Arquivo | Conteúdo |
+> |---|---|
+> | [.ai/business-rules.md](.ai/business-rules.md) | Domínio, regras de negócio, códigos de resposta e pontos em aberto |
+> | [.ai/architecture.md](.ai/architecture.md) | Componentes, fluxos, persistência e decisões (ADRs) |
+> | [.ai/standards.md](.ai/standards.md) | Padrões de código |
+> | [.ai/tech-stack.md](.ai/tech-stack.md) | Stack aprovada, versões e o que não usar |
+> | [.ai/prompts.md](.ai/prompts.md) | Registro dos prompts enviados a LLMs e do que foi executado |
+>
+> ## Registro de prompts
+>
+> Todo prompt enviado a uma LLM para trabalhar neste repositório é registrado em [.ai/prompts.md](.ai/prompts.md), junto com tudo o que foi executado. Assim, qualquer mudança pode ser rastreada até o pedido que a originou.
+>
+> - **Todo prompt entra:** inclusive perguntas sem mudança de arquivo, correções no meio de uma tarefa e prompts interrompidos.
+> - **Quem registra** é a própria LLM que recebeu o prompt, ao terminar de executá-lo.
+> - **Prompt na íntegra,** como foi escrito. Não resumir nem corrigir.
+> - **Só acrescentar:** uma entrada nova no fim do arquivo, com o número seguinte. Não reescrever nem apagar entradas antigas; uma correção vira uma entrada nova.
+> - **Mesmo commit:** a entrada vai no mesmo commit (ou PR) das mudanças que o prompt gerou. Prompt sem mudança de arquivo entra no próximo commit.
+> - **Sem segredos nem dados pessoais:** API keys, tokens, senhas, o conteúdo do `.env` e dados pessoais viram `[removido]`, tanto no prompt quanto no que foi executado.
+>
+> ### Formato da entrada
+>
+> ```markdown
+> ## NNN — Título curto do pedido
+>
+> - **Data:** AAAA-MM-DD
+> - **Branch:** `nome-da-branch` (uma ou mais)
+> - **PR:** #N (ou —)
+>
+> **Prompt**
+>
+> > Texto do prompt na íntegra.
+>
+> **Executado**
+>
+> - Arquivos criados, alterados ou removidos, e o que mudou em cada um.
+> - Comandos que mudaram algum estado (build, commit, push, PR) e as verificações feitas, com o resultado.
+> - Decisões tomadas e o que ficou em aberto.
+> ```
+>
+> </INSTRUCTIONS><environment_context>
+>   <cwd>C:\Users\[removido]\ai_assisted_log</cwd>
+>   <shell>powershell</shell>
+>   <current_date>2026-09-29</current_date>
+>   <timezone>America/Sao_Paulo</timezone>
+>   <filesystem><workspace_roots><root>C:\Users\[removido]\ai_assisted_log</root><root>C:\Users\[removido]\.codex\visualizations\2026\09\29\01a0ef95-76ac-7c52-944f-fbe7de0ce2f6</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>C:\Users\[removido]\ai_assisted_log</path></entry><entry access="write"><path>C:\Users\[removido]\.codex\visualizations\2026\09\29\01a0ef95-76ac-7c52-944f-fbe7de0ce2f6</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="read"><path>C:\Users\[removido]\ai_assisted_log\.git</path></entry><entry access="read"><path>C:\Users\[removido]\.codex\visualizations\2026\09\29\01a0ef95-76ac-7c52-944f-fbe7de0ce2f6\.git</path></entry><entry access="read"><path>C:\Users\[removido]\ai_assisted_log\.agents</path></entry><entry access="read"><path>C:\Users\[removido]\.codex\visualizations\2026\09\29\01a0ef95-76ac-7c52-944f-fbe7de0ce2f6\.agents</path></entry><entry access="read"><path>C:\Users\[removido]\ai_assisted_log\.codex</path></entry><entry access="read"><path>C:\Users\[removido]\.codex\visualizations\2026\09\29\01a0ef95-76ac-7c52-944f-fbe7de0ce2f6\.codex</path></entry></file_system></permission_profile></filesystem>
+> </environment_context>
+
+**Executado**
+
+- Lidas e aplicadas as instruções de contexto, registro de prompts e revisão final.
+- Nenhum arquivo foi alterado diretamente por esta mensagem; a implementação correspondente entrou na PR #9.
+
+## 011 — Implementar frontend desktop
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Crie uma nova branch dedicada à implementação do frontend.
+>
+> Antes de alterar qualquer arquivo, leia o planejamento já existente do frontend e também as documentações relevantes do projeto, incluindo arquitetura, Tech Stack, contratos da API, `README`, `AGENTS.md` e demais instruções aplicáveis.
+>
+> A implementação deve seguir o planejamento aprovado e respeitar os contratos, padrões e decisões já existentes no projeto.
+>
+> Depois da leitura:
+>
+> 1. Crie a branch para o frontend com um nome claro e consistente com o padrão do projeto.
+> 2. Implemente o frontend conforme o planejamento definido.
+> 3. Atualize as documentações necessárias à medida que a implementação avançar.
+> 4. Não altere contratos do backend ou decisões arquiteturais existentes sem necessidade.
+> 5. Não invente endpoints, campos, IDs, comportamentos ou requisitos que não estejam definidos no projeto ou no planejamento.
+> 6. Mantenha a implementação organizada, tipada, segura e preparada para evolução futura, sem adicionar complexidade desnecessária.
+> 7. Execute as validações, testes, lint, build e demais verificações disponíveis no projeto antes de considerar a implementação concluída.
+> 8. Faça os commits necessários com mensagens claras e coerentes com as alterações realizadas.
+> 9. Faça push da branch para o repositório remoto.
+> 10. Crie um Pull Request para a branch principal do projeto.
+>
+> Sempre que encontrar uma **dúvida, ambiguidade, conflito entre documentação e código, decisão de arquitetura não definida ou algo que possa alterar significativamente o comportamento planejado, pare e me pergunte antes de assumir uma decisão**.
+>
+> Para detalhes pequenos e não ambíguos de implementação, siga as convenções já existentes no projeto.
+>
+> O Pull Request deve conter uma descrição objetiva com:
+>
+> - resumo da implementação;
+> - principais alterações;
+> - arquitetura adotada;
+> - funcionalidades adicionadas;
+> - testes e validações executados;
+> - documentação atualizada;
+> - limitações conhecidas;
+> - itens que ficaram para etapas futuras, se houver.
+>
+> Ao final, apresente um resumo contendo:
+>
+> - branch criada;
+> - commits realizados;
+> - principais arquivos e estruturas adicionados ou alterados;
+> - funcionalidades implementadas;
+> - testes e validações executados;
+> - link ou identificação do Pull Request;
+> - eventuais limitações ou pendências.
+
+**Executado**
+
+- Criada `codex/frontend-desktop` a partir de `origin/main`; commit `e77077f` com `frontend/`, `README.md`, `.ai/architecture.md`, `.ai/tech-stack.md`, `.ai/standards.md` e `docs/api/README.md`.
+- Implementados Electron, cliente HTTP, IPC tipado, login, filtros, paginação, resumo visual, busca da página, detalhe, stack trace e testes. Nenhum contrato do backend foi alterado.
+- Executados `npm ci`, geração de tipos, typecheck, lint, 6 testes, pacote e instalador Windows, e validação HTTP dos quatro endpoints com Prism. Auditoria de produção: zero vulnerabilidades; ferramentas de desenvolvimento: 12 avisos.
+- Push da branch e criação da PR #9. Integração real permanece pendente das rotas de painel propostas; instalador sem assinatura, sem atualização automática e sem tempo real.
+
+## 012 — Usar Prism na porta 4010
+
+- **Data:** 2026-09-29
+- **Branch:** `codex/frontend-desktop`
+- **PR:** #9
+
+**Prompt**
+
+> Usar apenas o servidor mock Prism na porta 4010
+
+**Executado**
+
+- O modo de desenvolvimento usa somente Prism em `127.0.0.1:4010`, sem fixtures ou servidor alternativo. O pacote Windows usa a API local em `127.0.0.1:8000`.
+- Prism validado com login, lista de logs, detalhe e aplicações. Respostas estáticas podem repetir página mesmo com `next_cursor`.
