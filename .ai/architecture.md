@@ -341,4 +341,5 @@ Todas com status **Aceita**.
   - O front-end e o backend evoluem em paralelo, ligados só pelo contrato.
   - O token do usuário fica em um aplicativo instalado na máquina dele, então o local de armazenamento precisa ser definido com cuidado.
   - Há um aplicativo para distribuir e atualizar em cada máquina.
-- **Em aberto:** framework de interface do Electron, armazenamento seguro do token, e distribuição e atualização do aplicativo.
+- **Implementação inicial:** React + TypeScript no renderer; Electron Forge/Webpack para pacote Windows; cliente HTTP no processo principal, exposto por preload com IPC restrito e tipado. O token de usuário fica apenas em memória e a sessão acaba ao fechar o aplicativo. Em desenvolvimento, o cliente usa Prism em `127.0.0.1:4010`; empacotado, usa a API local em `127.0.0.1:8000`. Tipos são gerados do OpenAPI. A busca, os indicadores e o gráfico consideram apenas a página recebida pela API.
+- **Em aberto:** distribuição e atualização automática do aplicativo; integração real quando as rotas propostas do painel forem implementadas.

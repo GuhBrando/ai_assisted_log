@@ -39,11 +39,11 @@ O contrato segue a separação por contexto e por agregado do domínio (Clean Ar
 
 - Gerar os tipos TypeScript a partir do contrato:
   ```bash
-  npx openapi-typescript docs/api/openapi.yaml -o src/api/schema.d.ts
+  cd frontend && npm run generate:api
   ```
 - Enquanto o backend não implementa, usar um mock que responde com os exemplos do contrato:
   ```bash
-  npx @stoplight/prism-cli mock docs/api/openapi.yaml   # http://127.0.0.1:4010
+  cd frontend && npm run mock   # http://127.0.0.1:4010
   ```
 - O painel usa o token de usuário (`POST /auth/login`) no cabeçalho `Authorization: Bearer`. O token vale 1 hora e não tem renovação: expirou (401), volta para o login.
 

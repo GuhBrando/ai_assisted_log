@@ -26,6 +26,23 @@ Só as tecnologias abaixo estão aprovadas. Adicionar uma biblioteca nova exige 
 
 As versões das bibliotecas Python são as travadas no `uv.lock`; o `pyproject.toml` declara só o mínimo aceito (`>=`). Para atualizar uma biblioteca, rodar `uv lock --upgrade-package <pacote>` e atualizar esta tabela no mesmo commit. A versão mínima do PyMongo é a primeira em que a API assíncrona saiu do beta.
 
+## Frontend desktop
+
+O frontend em `frontend/` usa `npm` e `package-lock.json`, separadamente do `uv.lock` do backend. As versões exatas são fixadas pelo lock.
+
+| Camada | Tecnologia | Versão instalada | Papel |
+|---|---|---|---|
+| Runtime desktop | Electron | 44.5.0 | Janela, isolamento, IPC e cliente HTTP local |
+| Empacotamento | Electron Forge + Webpack | 8.0.1 | Build e pacote Windows com Squirrel |
+| Interface | React + React DOM | 19.3.0 | Tela de login e investigação |
+| Linguagem | TypeScript | 5.9.3 | Tipagem do cliente e do IPC |
+| Estado remoto | TanStack Query | 5.104.0 | Cache por filtros, cursor e detalhe |
+| Contrato | openapi-typescript | 7.13.0 | Geração de `src/api/schema.d.ts` a partir de `docs/api/openapi.yaml` |
+| Mock de desenvolvimento | Prism CLI | 5.14.2 | Exemplos do OpenAPI em `127.0.0.1:4010` |
+| Verificação | Vitest, oxlint, oxfmt | 5.0.2 / 1.86.0 / 0.41.0 | Testes, lint e formatação |
+
+O aplicativo em desenvolvimento usa apenas o Prism na porta 4010; o pacote Windows usa a API local fixa na porta 8000. O renderer não chama a API diretamente. O token de usuário fica em memória no processo principal. A versão inicial não persiste sessão e não possui atualização automática.
+
 ## Configuração obrigatória
 
 ### MongoDB
