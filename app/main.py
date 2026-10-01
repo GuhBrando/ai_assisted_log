@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
 from app.infrastructure.mongodb.client import create_mongo_client
+from app.interface.routers import applications, auth, customers, logs, users
 
 
 @asynccontextmanager
@@ -18,6 +19,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="API de Logs", lifespan=lifespan)
+
+app.include_router(auth.router)
+app.include_router(logs.router)
+app.include_router(customers.router)
+app.include_router(users.router)
+app.include_router(applications.router)
 
 
 @app.get("/health")
