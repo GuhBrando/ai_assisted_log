@@ -227,3 +227,80 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 - Criada a branch `codex/frontend-plan` a partir de `main`; commit `f807f11`, push e PR #8.
 - A PR foi criada pela API do GitHub com a credencial já configurada no Git, sem exibir o segredo. Nenhum código ou contrato público foi alterado.
 - Verificação: comparação entre o arquivo fornecido e a cópia identificou apenas a alteração do link; revisão do diff e `git diff --check` antes da entrega.
+
+## 010 — Implementação completa do backend Python
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> vamos acessar o repo e ver o que temos que fazer para criar um backend em python para concluir um trabalho de faculdade sobre ai
+> analise a pasta ai e o restante para entender o que vai ser feito primeiro
+> https://github.com/GuhBrando/ai_assisted_log
+
+> crie uma branch separada _(enviado mid-turn)_
+
+**Executado**
+
+- Leitura de todos os arquivos em `.ai/` e do código existente. Criada a branch `feature/backend-implementation` a partir de `main`.
+- Camada de application criada do zero:
+  - `app/application/errors.py`: exceções de domínio (`NotAuthenticated`, `Forbidden`, `NotFound`, `Conflict`, `PayloadTooLarge`).
+  - `app/application/models.py`: dataclasses de domínio (`ApiKeyDoc`, `ApplicationDoc`, `CustomerDoc`, `UserDoc`, `LogDoc`, `LogPage`, `GeneratedApiKey`).
+  - `app/application/ports/`: ABCs para os quatro repositórios (`customer`, `user`, `application`, `log`).
+  - `app/application/use_cases/`: `IssueToken`, `LoginUser`, `IngestLog`, `QueryLogs`, `RegisterCustomer`, `RegisterUser`, `RegisterApplication`, `GenerateApiKey`, `RevokeApiKey`.
+- Repositórios MongoDB criados em `app/infrastructure/mongodb/repositories/` (customer, user, application, log), com conversão BSON camelCase ↔ Python snake_case e queries assíncronas.
+- Camada de interface criada em `app/interface/`:
+  - `schemas/`: modelos Pydantic v2 com `ConfigDict(extra="forbid")` para auth, log, application, customer, user.
+  - `routers/`: `auth`, `logs`, `customers`, `users`, `applications`.
+- `app/main.py` atualizado para incluir todos os routers.
+- `app/interface/deps.py`: dependências FastAPI para banco, claims de app token e claims de user token.
+- Testes criados em `tests/` (conftest com Testcontainers, test_health, test_auth, test_logs).
+- `pytest.ini` e `pyproject.toml` atualizados com dependências de desenvolvimento.
+- Commit `836a03a`. Push falhou: autenticação GitHub não configurada (`gh auth login` necessário).
+- Testes não executados: Docker Desktop estava parado.
+
+## 011 — Revisão de conformidade com as specs do .ai/
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> voce seguiu as especificacoes de arquitetura utilizado no .ai?
+
+**Executado**
+
+- Releitura de todos os arquivos em `.ai/`. Identificados 6 problemas críticos e 3 menores em relação às especificações.
+- Correções aplicadas e commitadas em `16b14f3`:
+  - `app/domain/tags.py` (novo): tipo compartilhado `Tag = Annotated[str, AfterValidator(_normalize)]`, usado em `LogCreate` e `ApplicationCreate` conforme exigido pela spec.
+  - `app/interface/schemas/log.py`: usa `list[Tag]`; adicionado `@field_validator` para deduplicação e limite de tags; renomeado `LogResponse` → `LogRead`.
+  - `app/interface/schemas/application.py`: usa `list[Tag]` com deduplicação.
+  - `app/interface/deps.py`: adicionado `WWW-Authenticate: Bearer` em todos os 401; `iat` adicionado às claims obrigatórias do JWT.
+  - `app/interface/routers/auth.py`: `Cache-Control: no-store` no `POST /auth/token`.
+  - `app/main.py`: handlers de Problem Details (RFC 9457 / ADR-019) para `HTTPException` e `RequestValidationError`, com `media_type: application/problem+json`.
+  - `app/infrastructure/mongodb/repositories/log_repository.py`: `_truncate_ms()` aplicada a datas antes do insert (BSON guarda ms, não µs); adicionado `$in` com todos os níveis quando `application_id` está presente sem `level_min`, para forçar uso do índice composto.
+  - `app/infrastructure/mongodb/repositories/user_repository.py`: `DuplicateKeyError` tratado pelo padrão do índice (`keyPattern`), levantando `Conflict` com o nome do índice.
+  - `app/infrastructure/mongodb/repositories/application_repository.py`: idem para o índice de nome de aplicação.
+  - `app/application/use_cases/applications/register_application.py`: removidos imports de `fastapi.HTTPException` (violação de Clean Architecture); normalização de tags delegada ao schema Pydantic.
+- Verificação: `uv run python -c "from app.main import app; print('Import OK')"` retornou `Import OK`.
+
+## 012 — Localização da pasta .ai e registro dos prompts
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> onde esta a pasta dos arquivos
+
+> sim, registre _(resposta à oferta de registrar os prompts)_
+
+**Executado**
+
+- Informado que `.ai/` é um diretório oculto em `/Users/[removido]/code/ai_assisted_log/.ai/`.
+- Adicionadas as entradas 010, 011 e 012 neste arquivo.
+- Commit a ser feito junto com estas alterações.
