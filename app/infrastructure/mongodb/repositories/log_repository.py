@@ -30,6 +30,7 @@ class MongoLogRepository(LogRepository):
         received_at: datetime,
         expire_at: datetime,
     ) -> ObjectId:
+        # BSON guarda milissegundos; truncar microssegundos para o valor lido ser igual ao gravado
         doc = {
             "customerId": customer_id,
             "applicationId": application_id,
@@ -41,9 +42,9 @@ class MongoLogRepository(LogRepository):
             "environment": environment,
             "informationData": information_data,
             "tags": tags,
-            "occurredAt": occurred_at,
-            "receivedAt": received_at,
-            "expireAt": expire_at,
+            "occurredAt": _truncate_ms(occurred_at),
+            "receivedAt": _truncate_ms(received_at),
+            "expireAt": _truncate_ms(expire_at),
         }
         result = await self._col.insert_one(doc)
         return result.inserted_id
@@ -69,8 +70,11 @@ class MongoLogRepository(LogRepository):
         if application_id is not None:
             query["applicationId"] = application_id
         if level_min is not None:
-            # Usar $in com os valores da faixa (ADR na DDL de logs)
             query["level"] = {"$in": list(range(level_min, 6))}
+        elif application_id is not None:
+            # Com applicationId mas sem filtro de nível → passar todos os níveis no $in
+            # para que o MongoDB use o índice (customerId, applicationId, level, …)
+            query["level"] = {"$in": list(range(6))}
         if correlation_id is not None:
             query["correlationId"] = correlation_id
         if tags:
@@ -122,6 +126,11 @@ def _decode_cursor(cursor: str) -> tuple[datetime, ObjectId] | None:
         return occurred_at, ObjectId(data["id"])
     except Exception:
         return None
+
+
+def _truncate_ms(dt: datetime) -> datetime:
+    """Remove microssegundos: BSON guarda só milissegundos (standards.md)."""
+    return dt.replace(microsecond=(dt.microsecond // 1000) * 1000)
 
 
 def _to_domain(doc: dict) -> LogDoc:

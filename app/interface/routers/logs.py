@@ -23,7 +23,7 @@ from app.interface.schemas.log import (
     LogCreate,
     LogCreateResponse,
     LogListResponse,
-    LogResponse,
+    LogRead,
 )
 
 router = APIRouter(prefix="/logs", tags=["logs"])
@@ -59,7 +59,7 @@ async def ingest_log(
     return LogCreateResponse(id=str(log_id))
 
 
-@router.get("", response_model=LogListResponse)
+@router.get("", response_model=LogListResponse)  # noqa: E501
 async def list_logs(
     application_id: str | None = Query(None),
     level_min: int | None = Query(None, ge=0, le=5),
@@ -93,12 +93,12 @@ async def list_logs(
     )
 
 
-@router.get("/{log_id}", response_model=LogResponse)
+@router.get("/{log_id}", response_model=LogRead)
 async def get_log(
     log_id: str,
     claims: UserTokenClaims = Depends(get_user_claims),
     log_repo: LogRepository = Depends(get_log_repo),
-) -> LogResponse:
+) -> LogRead:
     try:
         oid = ObjectId(log_id)
     except Exception:
@@ -111,8 +111,8 @@ async def get_log(
     return _to_response(log)
 
 
-def _to_response(log) -> LogResponse:
-    return LogResponse(
+def _to_response(log) -> LogRead:
+    return LogRead(
         id=str(log.id),
         customer_id=str(log.customer_id),
         application_id=str(log.application_id),

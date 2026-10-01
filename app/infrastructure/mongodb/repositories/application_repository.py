@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
+from app.application.errors import Conflict
 from app.application.models import ApiKeyDoc, ApplicationDoc
 from app.application.ports.application_repository import ApplicationRepository
 from app.infrastructure.mongodb.client import MongoDatabase
@@ -37,7 +39,13 @@ class MongoApplicationRepository(ApplicationRepository):
             "tags": tags,
             "createdAt": now,
         }
-        result = await self._col.insert_one(doc)
+        try:
+            result = await self._col.insert_one(doc)
+        except DuplicateKeyError as e:
+            index = e.details.get("keyPattern", {}) if e.details else {}
+            if "name" in str(index):
+                raise Conflict("Já existe uma aplicação com esse nome neste cliente (applications_customer_name_unique)")
+            raise Conflict("Conflito de unicidade")
         doc["_id"] = result.inserted_id
         return _to_domain(doc)
 

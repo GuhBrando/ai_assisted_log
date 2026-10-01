@@ -52,26 +52,29 @@ class AppTokenClaims:
     jti: str
 
 
+_WWW_AUTH = {"WWW-Authenticate": "Bearer"}
+
+
 async def get_app_claims(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> AppTokenClaims:
     if credentials is None:
-        raise HTTPException(401, "Token ausente")
+        raise HTTPException(401, "Token ausente", headers=_WWW_AUTH)
     try:
         payload = jwt.decode(
             credentials.credentials,
             os.environ["JWT_SECRET"],
             algorithms=["HS256"],
-            options={"require": ["sub", "exp", "jti"]},
+            options={"require": ["sub", "iat", "exp", "jti"]},
         )
     except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expirado")
+        raise HTTPException(401, "Token expirado", headers=_WWW_AUTH)
     except jwt.PyJWTError:
-        raise HTTPException(401, "Token inválido")
+        raise HTTPException(401, "Token inválido", headers=_WWW_AUTH)
 
     # Rejeita tokens de usuário usados em rotas de aplicação
     if payload.get("aud") == "user":
-        raise HTTPException(401, "Token inválido para esta rota")
+        raise HTTPException(401, "Token inválido para esta rota", headers=_WWW_AUTH)
 
     return AppTokenClaims(
         app_id=payload["sub"],
@@ -92,19 +95,19 @@ async def get_user_claims(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> UserTokenClaims:
     if credentials is None:
-        raise HTTPException(401, "Token ausente")
+        raise HTTPException(401, "Token ausente", headers=_WWW_AUTH)
     try:
         payload = jwt.decode(
             credentials.credentials,
             os.environ["JWT_SECRET"],
             algorithms=["HS256"],
             audience="user",
-            options={"require": ["sub", "exp", "jti", "customer_id"]},
+            options={"require": ["sub", "iat", "exp", "jti", "customer_id"]},
         )
     except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expirado")
+        raise HTTPException(401, "Token expirado", headers=_WWW_AUTH)
     except jwt.PyJWTError:
-        raise HTTPException(401, "Token inválido")
+        raise HTTPException(401, "Token inválido", headers=_WWW_AUTH)
 
     return UserTokenClaims(
         user_id=payload["sub"],

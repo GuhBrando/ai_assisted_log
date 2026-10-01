@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 
 from app.application.errors import Forbidden, NotAuthenticated
 from app.application.ports.application_repository import ApplicationRepository
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/token", response_model=TokenResponse)
 async def issue_token(
+    response: Response,
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     app_repo: ApplicationRepository = Depends(get_app_repo),
     customer_repo: CustomerRepository = Depends(get_customer_repo),
@@ -27,6 +28,7 @@ async def issue_token(
         raise HTTPException(401, "API key inválida, expirada ou revogada")
     except Forbidden:
         raise HTTPException(403, "Cliente inativo")
+    response.headers["Cache-Control"] = "no-store"
     return TokenResponse(
         access_token=result.access_token,
         token_type=result.token_type,
