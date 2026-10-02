@@ -746,3 +746,115 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 
 - Verificado o estado da branch e do remoto; alterações já preparadas para commit foram reunidas e enviadas para `origin/codex/frontend-desktop`.
 - Validado o diff antes do commit.
+
+## 018 — Implementação completa do backend Python
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> vamos acessar o repo e ver o que temos que fazer para criar um backend em python para concluir um trabalho de faculdade sobre ai
+> analise a pasta ai e o restante para entender o que vai ser feito primeiro
+> https://github.com/GuhBrando/ai_assisted_log
+
+> crie uma branch separada _(enviado mid-turn)_
+
+**Executado**
+
+- Leitura de todos os arquivos em `.ai/` e do código existente. Criada a branch `feature/backend-implementation` a partir de `main`.
+- Camada de application criada do zero:
+  - `app/application/errors.py`: exceções de domínio (`NotAuthenticated`, `Forbidden`, `NotFound`, `Conflict`, `PayloadTooLarge`).
+  - `app/application/models.py`: dataclasses de domínio (`ApiKeyDoc`, `ApplicationDoc`, `CustomerDoc`, `UserDoc`, `LogDoc`, `LogPage`, `GeneratedApiKey`).
+  - `app/application/ports/`: ABCs para os quatro repositórios (`customer`, `user`, `application`, `log`).
+  - `app/application/use_cases/`: `IssueToken`, `LoginUser`, `IngestLog`, `QueryLogs`, `RegisterCustomer`, `RegisterUser`, `RegisterApplication`, `GenerateApiKey`, `RevokeApiKey`.
+- Repositórios MongoDB criados em `app/infrastructure/mongodb/repositories/` (customer, user, application, log), com conversão BSON camelCase ↔ Python snake_case e queries assíncronas.
+- Camada de interface criada em `app/interface/`:
+  - `schemas/`: modelos Pydantic v2 com `ConfigDict(extra="forbid")` para auth, log, application, customer, user.
+  - `routers/`: `auth`, `logs`, `customers`, `users`, `applications`.
+- `app/main.py` atualizado para incluir todos os routers.
+- `app/interface/deps.py`: dependências FastAPI para banco, claims de app token e claims de user token.
+- Testes criados em `tests/` (conftest com Testcontainers, test_health, test_auth, test_logs).
+- `pytest.ini` e `pyproject.toml` atualizados com dependências de desenvolvimento.
+- Commit `836a03a`. Push falhou: autenticação GitHub não configurada (`gh auth login` necessário).
+- Testes não executados: Docker Desktop estava parado.
+
+## 019 — Revisão de conformidade com as specs do .ai/
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> voce seguiu as especificacoes de arquitetura utilizado no .ai?
+
+**Executado**
+
+- Releitura de todos os arquivos em `.ai/`. Identificados 6 problemas críticos e 3 menores em relação às especificações.
+- Correções aplicadas e commitadas em `16b14f3`:
+  - `app/domain/tags.py` (novo): tipo compartilhado `Tag = Annotated[str, AfterValidator(_normalize)]`, usado em `LogCreate` e `ApplicationCreate` conforme exigido pela spec.
+  - `app/interface/schemas/log.py`: usa `list[Tag]`; adicionado `@field_validator` para deduplicação e limite de tags; renomeado `LogResponse` → `LogRead`.
+  - `app/interface/schemas/application.py`: usa `list[Tag]` com deduplicação.
+  - `app/interface/deps.py`: adicionado `WWW-Authenticate: Bearer` em todos os 401; `iat` adicionado às claims obrigatórias do JWT.
+  - `app/interface/routers/auth.py`: `Cache-Control: no-store` no `POST /auth/token`.
+  - `app/main.py`: handlers de Problem Details (RFC 9457 / ADR-019) para `HTTPException` e `RequestValidationError`, com `media_type: application/problem+json`.
+  - `app/infrastructure/mongodb/repositories/log_repository.py`: `_truncate_ms()` aplicada a datas antes do insert (BSON guarda ms, não µs); adicionado `$in` com todos os níveis quando `application_id` está presente sem `level_min`, para forçar uso do índice composto.
+  - `app/infrastructure/mongodb/repositories/user_repository.py`: `DuplicateKeyError` tratado pelo padrão do índice (`keyPattern`), levantando `Conflict` com o nome do índice.
+  - `app/infrastructure/mongodb/repositories/application_repository.py`: idem para o índice de nome de aplicação.
+  - `app/application/use_cases/applications/register_application.py`: removidos imports de `fastapi.HTTPException` (violação de Clean Architecture); normalização de tags delegada ao schema Pydantic.
+- Verificação: `uv run python -c "from app.main import app; print('Import OK')"` retornou `Import OK`.
+
+## 020 — Localização da pasta .ai e registro dos prompts
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> onde esta a pasta dos arquivos
+
+> sim, registre _(resposta à oferta de registrar os prompts)_
+
+**Executado**
+
+- Informado que `.ai/` é um diretório oculto em `/Users/[removido]/code/ai_assisted_log/.ai/`.
+- Adicionadas as entradas 010, 011 e 012 neste arquivo.
+- Commit a ser feito junto com estas alterações.
+
+## 021 — Testes unitários cobrindo 100% dos cenários
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> vamos criar testes unitarios que cubram 100% dos cenarios
+
+> adicione tambem a informacao dos testes no registro dos prompts
+
+**Executado**
+
+- Leitura de todos os use cases, modelos de domínio e constraints para mapear os cenários.
+- Criada a pasta `tests/unit/` com `__init__.py` e `conftest.py` contendo factories de objetos de domínio (`make_api_key`, `make_application`, `make_customer`, `make_user`, `make_log`) e mocks assíncronos de repositório (`mock_app_repo`, `mock_customer_repo`, `mock_user_repo`, `mock_log_repo`). Nenhum container Docker é necessário — os testes rodam em ~0.4s.
+- Criados 11 arquivos de teste com **85 testes**, todos passando:
+
+| Arquivo | Testes | O que cobre |
+|---|---|---|
+| `test_api_key_doc.py` | 8 | `ApiKeyDoc.is_valid`: expiração, revogação, limites exatos |
+| `test_tags.py` | 12 | Tipo `Tag`: normalização lowercase, remoção de espaços, formatos inválidos |
+| `test_issue_token.py` | 8 | `IssueToken`: chave não encontrada, revogada, expirada; `exp = min(+1h, expires_at)` |
+| `test_login_user.py` | 6 | `LoginUser`: senha errada, cliente inativo, claims `aud`/`sub`/`customer_id` no JWT |
+| `test_ingest_log.py` | 14 | `IngestLog`: mascaramento de 13 campos sensíveis, chaves com `$`/`.`, limite 64 KB, merge de tags com precedência da aplicação, TTL |
+| `test_query_logs.py` | 8 | `QueryLogs`: clamp de limit (1–100), todos os filtros repassados, cursor, lista vazia |
+| `test_register_customer.py` | 7 | `RegisterCustomer`: limites de `retention_days` (1–3650), e-mail duplicado, hash Argon2 |
+| `test_register_user.py` | 4 | `RegisterUser`: hash, `customer_id`, e-mail duplicado |
+| `test_register_application.py` | 4 | `RegisterApplication`: tags, name e customer_id repassados ao repositório |
+| `test_generate_api_key.py` | 8 | `GenerateApiKey`: prefixo `lx_`, 10 chars, hash SHA-256, isolamento por cliente |
+| `test_revoke_api_key.py` | 4 | `RevokeApiKey`: not found, outro cliente, chave inexistente |
+
+- **Bug real encontrado e corrigido:** `login_user.py` usava `_pwd.check()` que não existe no pwdlib — o método correto é `_pwd.verify()`. Sem essa correção o login nunca funcionaria em produção.
+- Commit `e952955`.
