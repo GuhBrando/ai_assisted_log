@@ -304,3 +304,38 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 - Informado que `.ai/` é um diretório oculto em `/Users/[removido]/code/ai_assisted_log/.ai/`.
 - Adicionadas as entradas 010, 011 e 012 neste arquivo.
 - Commit a ser feito junto com estas alterações.
+
+## 013 — Testes unitários cobrindo 100% dos cenários
+
+- **Data:** 2026-10-01
+- **Branch:** `feature/backend-implementation`
+- **PR:** —
+
+**Prompt**
+
+> vamos criar testes unitarios que cubram 100% dos cenarios
+
+> adicione tambem a informacao dos testes no registro dos prompts
+
+**Executado**
+
+- Leitura de todos os use cases, modelos de domínio e constraints para mapear os cenários.
+- Criada a pasta `tests/unit/` com `__init__.py` e `conftest.py` contendo factories de objetos de domínio (`make_api_key`, `make_application`, `make_customer`, `make_user`, `make_log`) e mocks assíncronos de repositório (`mock_app_repo`, `mock_customer_repo`, `mock_user_repo`, `mock_log_repo`). Nenhum container Docker é necessário — os testes rodam em ~0.4s.
+- Criados 11 arquivos de teste com **85 testes**, todos passando:
+
+| Arquivo | Testes | O que cobre |
+|---|---|---|
+| `test_api_key_doc.py` | 8 | `ApiKeyDoc.is_valid`: expiração, revogação, limites exatos |
+| `test_tags.py` | 12 | Tipo `Tag`: normalização lowercase, remoção de espaços, formatos inválidos |
+| `test_issue_token.py` | 8 | `IssueToken`: chave não encontrada, revogada, expirada; `exp = min(+1h, expires_at)` |
+| `test_login_user.py` | 6 | `LoginUser`: senha errada, cliente inativo, claims `aud`/`sub`/`customer_id` no JWT |
+| `test_ingest_log.py` | 14 | `IngestLog`: mascaramento de 13 campos sensíveis, chaves com `$`/`.`, limite 64 KB, merge de tags com precedência da aplicação, TTL |
+| `test_query_logs.py` | 8 | `QueryLogs`: clamp de limit (1–100), todos os filtros repassados, cursor, lista vazia |
+| `test_register_customer.py` | 7 | `RegisterCustomer`: limites de `retention_days` (1–3650), e-mail duplicado, hash Argon2 |
+| `test_register_user.py` | 4 | `RegisterUser`: hash, `customer_id`, e-mail duplicado |
+| `test_register_application.py` | 4 | `RegisterApplication`: tags, name e customer_id repassados ao repositório |
+| `test_generate_api_key.py` | 8 | `GenerateApiKey`: prefixo `lx_`, 10 chars, hash SHA-256, isolamento por cliente |
+| `test_revoke_api_key.py` | 4 | `RevokeApiKey`: not found, outro cliente, chave inexistente |
+
+- **Bug real encontrado e corrigido:** `login_user.py` usava `_pwd.check()` que não existe no pwdlib — o método correto é `_pwd.verify()`. Sem essa correção o login nunca funcionaria em produção.
+- Commit `e952955`.
