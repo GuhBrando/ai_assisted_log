@@ -112,3 +112,11 @@ O corpo de erro segue o Problem Details (RFC 9457), com `Content-Type: applicati
 - Cada regra de negócio tem pelo menos um teste. A lista mínima está em [Casos de aceitação](business-rules.md#casos-de-aceitação).
 - Em testes de rejeição, verificar também que nada foi gravado (ex.: `customer_id` no corpo → 422 e coleção `logs` vazia).
 - Tokens expirados ou adulterados são gerados direto no teste (ex.: `exp` no passado, assinatura com outro segredo), sem esperar o tempo passar.
+
+## Frontend TypeScript
+
+- O código desktop fica em `frontend/`. Dependências via npm, com `package.json` e `package-lock.json` no mesmo commit; tipos da API são gerados de `docs/api/openapi.yaml`.
+- O processo principal do Electron faz as requisições HTTP e mantém o token em memória. O preload expõe somente métodos IPC tipados; o renderer não recebe o token e não acessa Node, MongoDB ou a API diretamente.
+- Componentes React usam nomes em `PascalCase`, funções/variáveis em `camelCase`; nomes de campos e parâmetros da API permanecem em `snake_case` como no contrato.
+- Exibir log, exceção e `information_data` como texto, sem HTML interpretado. A busca e as estatísticas locais devem informar seu alcance na página carregada.
+- Rodar `npm run typecheck`, `npm run lint`, `npm test` e `npm run package` em `frontend/` antes de publicar.
