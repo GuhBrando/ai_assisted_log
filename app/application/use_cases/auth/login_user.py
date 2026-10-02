@@ -33,7 +33,7 @@ class LoginUser:
 
     async def execute(self, email: str, password: str) -> LoginResult:
         user = await self._user_repo.find_by_email(email)
-        if user is None or not _pwd.check(password, user.password_hash):
+        if user is None or not _pwd.verify(password, user.password_hash):
             raise NotAuthenticated
 
         customer = await self._customer_repo.find_by_id(user.customer_id)
