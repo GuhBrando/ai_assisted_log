@@ -863,7 +863,7 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 
 - **Data:** 2026-10-02
 - **Branch:** `feature/frontend-backend-integration`
-- **PR:** —
+- **PR:** #10
 
 **Prompt**
 
@@ -900,3 +900,23 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
   - O `ApiClient` e o `parseLogQuery` do frontend, num teste temporário (apagado depois), contra a API real: login errado, aplicações, paginação por cursor, filtros de nível, aplicação, tags, período e correlation ID, detalhe com senha mascarada. Passou.
   - Electron aberto com `electron-forge start` e conduzido por CDP (Playwright): rótulo `API local · 127.0.0.1:8000`, "Credenciais inválidas" no login errado, 50 logs na primeira página, aplicações no filtro, filtro checkout + Error e acima com 18 logs só de Error/Critical, detalhe com exceção e `password` mascarado.
 - Em aberto, divergências do contrato fora do caminho do frontend: `POST /customers` com corpo plano (o contrato é `{customer, user}`), `raw_key` no lugar de `key` na API key criada, sem 403 para cliente inativo nas rotas do painel, sem `Cache-Control: no-store` no `POST /auth/login`, tags do filtro de `GET /logs` sem normalização no backend e `LogListResponse` ainda sem o nome `LogPage` do contrato.
+
+## 023 — Commit e PR da integração
+
+- **Data:** 2026-10-02
+- **Branch:** `feature/frontend-backend-integration`
+- **PR:** #10
+
+**Prompt**
+
+> Pode fazer commit e abrir PR
+
+**Executado**
+
+- Checagens antes do commit: `git diff --check`, `uv run pytest tests` (101 passaram), `tsc --noEmit`, `oxlint` e `npm test` (18 passaram) em `frontend/`. O repositório não tem `npm run preflight`.
+- Três commits na branch, sem trailer de autoria do assistente:
+  - `d73bb80` — testes de endpoint rodando contra o MongoDB do Testcontainers (`tests/conftest.py`, `pytest.ini`).
+  - `0228d0b` — rotas do painel alinhadas ao contrato (`app/`, `tests/test_panel.py`).
+  - `bbf2ff5` — frontend com a API local por padrão, documentação e o registro do prompt 022.
+- Push de `feature/frontend-backend-integration` e PR #10 com base em `main`. O repositório não tem template de PR; a descrição segue o formato das PRs anteriores (resumo, o que estava quebrado, mudanças, como rodar, verificação e pontos em aberto).
+- Esta entrada e o número da PR na entrada 022 foram num segundo commit da mesma PR, depois de a PR existir, como na entrada 006.
