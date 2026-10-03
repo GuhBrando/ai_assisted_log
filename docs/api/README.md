@@ -41,9 +41,10 @@ O contrato segue a separação por contexto e por agregado do domínio (Clean Ar
   ```bash
   cd frontend && npm run generate:api
   ```
-- Enquanto o backend não implementa, usar o Prism com a massa determinística de desenvolvimento (1.600 logs, sem MongoDB):
+- `npm start` usa o backend local em `http://127.0.0.1:8000` (`scripts/startup.sh`). Para desenvolver sem backend, usar o Prism com a massa determinística de desenvolvimento (1.600 logs, sem MongoDB):
   ```bash
-  cd frontend && npm run mock   # http://127.0.0.1:4010
+  cd frontend && npm run mock         # http://127.0.0.1:4010
+  cd frontend && npm run start:mock   # outro terminal: Electron apontando para o Prism
   ```
 - O script inicia um upstream local na porta 4011, atrás do proxy Prism na porta 4010. Execute `npm run verify:mock` em outro terminal para validar paginação, filtros, ordenação e detalhes pelo Prism. Esses dados servem apenas à validação do cliente desktop.
 - O painel usa o token de usuário (`POST /auth/login`) no cabeçalho `Authorization: Bearer`. O token vale 1 hora e não tem renovação: expirou (401), volta para o login.

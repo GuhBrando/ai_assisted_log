@@ -20,7 +20,8 @@ def mongo_container():
 
 @pytest_asyncio.fixture(scope="session")
 async def mongo_uri(mongo_container):
-    uri = mongo_container.get_connection_url() + "/log_api_test"
+    # O usuário root do container fica no banco admin; sem authSource, a autenticação falha.
+    uri = mongo_container.get_connection_url() + "/log_api_test?authSource=admin"
     os.environ["MONGODB_URI"] = uri
     os.environ.setdefault("JWT_SECRET", "test-secret-at-least-32-bytes-long!")
 
@@ -32,5 +33,7 @@ async def mongo_uri(mongo_container):
 
 @pytest_asyncio.fixture
 async def http_client(mongo_uri):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        yield client
+    # O ASGITransport não executa o lifespan; sem ele, app.state.mongo_client não existe.
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            yield client

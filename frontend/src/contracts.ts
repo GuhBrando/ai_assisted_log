@@ -9,8 +9,10 @@ export type LogQuery = NonNullable<
 >;
 export type ApiError = { message: string; status?: number };
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ApiError };
+export type ApiTarget = { url: string; mock: boolean };
 
 export interface LogApi {
+  apiTarget(): Promise<Result<ApiTarget>>;
   login(credentials: UserLogin): Promise<Result<void>>;
   logout(): Promise<Result<void>>;
   session(): Promise<Result<boolean>>;

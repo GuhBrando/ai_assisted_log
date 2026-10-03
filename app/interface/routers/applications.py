@@ -10,20 +10,22 @@ from app.application.use_cases.applications.revoke_api_key import RevokeApiKey
 from app.interface.deps import UserTokenClaims, get_app_repo, get_user_claims
 from app.interface.schemas.application import (
     ApiKeyCreate,
+    ApiKeyRead,
     ApiKeyResponse,
     ApplicationCreate,
-    ApplicationResponse,
+    ApplicationList,
+    ApplicationRead,
 )
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 
-@router.post("", response_model=ApplicationResponse, status_code=201)
+@router.post("", response_model=ApplicationRead, status_code=201)
 async def register_application(
     body: ApplicationCreate,
     claims: UserTokenClaims = Depends(get_user_claims),
     app_repo: ApplicationRepository = Depends(get_app_repo),
-) -> ApplicationResponse:
+) -> ApplicationRead:
     use_case = RegisterApplication(app_repo)
     try:
         app = await use_case.execute(
@@ -36,21 +38,21 @@ async def register_application(
     return _to_response(app)
 
 
-@router.get("", response_model=list[ApplicationResponse])
+@router.get("", response_model=ApplicationList)
 async def list_applications(
     claims: UserTokenClaims = Depends(get_user_claims),
     app_repo: ApplicationRepository = Depends(get_app_repo),
-) -> list[ApplicationResponse]:
+) -> ApplicationList:
     apps = await app_repo.list_by_customer(ObjectId(claims.customer_id))
-    return [_to_response(a) for a in apps]
+    return ApplicationList(items=[_to_response(a) for a in apps])
 
 
-@router.get("/{app_id}", response_model=ApplicationResponse)
+@router.get("/{app_id}", response_model=ApplicationRead)
 async def get_application(
     app_id: str,
     claims: UserTokenClaims = Depends(get_user_claims),
     app_repo: ApplicationRepository = Depends(get_app_repo),
-) -> ApplicationResponse:
+) -> ApplicationRead:
     try:
         oid = ObjectId(app_id)
     except Exception:
@@ -110,11 +112,14 @@ async def revoke_api_key(
         raise HTTPException(404, "Aplicação ou chave não encontrada")
 
 
-def _to_response(a: ApplicationDoc) -> ApplicationResponse:
-    return ApplicationResponse(
+def _to_response(a: ApplicationDoc) -> ApplicationRead:
+    return ApplicationRead(
         id=str(a.id),
-        customer_id=str(a.customer_id),
         name=a.name,
         tags=a.tags,
+        api_keys=[
+            ApiKeyRead(prefix=k.prefix, expires_at=k.expires_at, revoked_at=k.revoked_at)
+            for k in a.api_keys
+        ],
         created_at=a.created_at,
     )

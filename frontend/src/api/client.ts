@@ -96,21 +96,22 @@ export class ApiClient {
     }
     if (response.status === 401 && authorized) this.logout();
     if (!response.ok) {
-      let detail: unknown;
+      let problem: unknown;
       try {
-        detail = await response.json();
+        problem = await response.json();
       } catch {
         /* HTTP sem corpo JSON */
       }
-      const title =
-        typeof detail === 'object' &&
-        detail !== null &&
-        'title' in detail &&
-        typeof detail.title === 'string'
-          ? detail.title
-          : undefined;
+      // Problem Details: `detail` explica esta ocorrência; `title` é só o nome do status.
+      const fields =
+        typeof problem === 'object' && problem !== null
+          ? (problem as Record<string, unknown>)
+          : {};
+      const message = [fields.detail, fields.title].find(
+        (value): value is string => typeof value === 'string' && value !== '',
+      );
       throw new HttpError(
-        title ?? `Erro HTTP ${response.status}.`,
+        message ?? `Erro HTTP ${response.status}.`,
         response.status,
       );
     }

@@ -3,17 +3,20 @@ import type { IpcMainInvokeEvent } from 'electron';
 import started from 'electron-squirrel-startup';
 import { ApiClient, HttpError } from './api/client';
 import { isObjectId, parseLogQuery } from './api/query';
-import type { Result, UserLogin } from './contracts';
+import type { ApiTarget, Result, UserLogin } from './contracts';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 if (started) app.quit();
 
-// Prism is the only development API while panel routes remain proposed.
-const client = new ApiClient(
-  app.isPackaged ? 'http://127.0.0.1:8000' : 'http://127.0.0.1:4010',
-);
+// Usa a API local do backend; só em desenvolvimento `--mock-api` (npm run start:mock) troca pelo Prism.
+const mockApi = !app.isPackaged && process.argv.includes('--mock-api');
+const apiTarget: ApiTarget = {
+  url: mockApi ? 'http://127.0.0.1:4010' : 'http://127.0.0.1:8000',
+  mock: mockApi,
+};
+const client = new ApiClient(apiTarget.url);
 let mainWindow: BrowserWindow | null = null;
 
 function onlyMainWindow(event: IpcMainInvokeEvent): void {
@@ -53,6 +56,7 @@ function handle<T>(
 }
 
 function registerHandlers(): void {
+  handle('app:api-target', () => apiTarget);
   handle('auth:session', () => client.hasSession());
   handle('auth:logout', () => {
     client.logout();

@@ -84,7 +84,8 @@ class MongoLogRepository(LogRepository):
         if from_date is not None:
             occurred_filter["$gte"] = from_date
         if to_date is not None:
-            occurred_filter["$lte"] = to_date
+            # Fim exclusivo, como no contrato: occurred_at < occurred_to
+            occurred_filter["$lt"] = to_date
         if occurred_filter:
             query["occurredAt"] = occurred_filter
 

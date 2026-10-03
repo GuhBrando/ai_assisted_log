@@ -34,7 +34,6 @@ class LogCreate(BaseModel):
 class LogRead(BaseModel):
     """Resposta de GET /logs e GET /logs/{id} (vocabulário do domínio: LogRead)."""
     id: str
-    customer_id: str
     application_id: str
     application_name: str
     correlation_id: UUID | None
