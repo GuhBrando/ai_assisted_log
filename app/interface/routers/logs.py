@@ -61,12 +61,12 @@ async def ingest_log(
 
 @router.get("", response_model=LogListResponse)  # noqa: E501
 async def list_logs(
-    application_id: str | None = Query(None),
-    level_min: int | None = Query(None, ge=0, le=5),
+    application_id: str | None = Query(None, pattern=r"^[0-9a-f]{24}$"),
+    min_level: int | None = Query(None, ge=0, le=5),
     correlation_id: UUID | None = Query(None),
     tags: list[str] = Query(default=[]),
-    from_date: datetime | None = Query(None),
-    to_date: datetime | None = Query(None),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
     cursor: str | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     claims: UserTokenClaims = Depends(get_user_claims),
@@ -79,11 +79,11 @@ async def list_logs(
     page = await use_case.execute(
         customer_id=customer_id,
         application_id=app_id,
-        level_min=level_min,
+        level_min=min_level,
         correlation_id=correlation_id,
         tags=tags,
-        from_date=from_date,
-        to_date=to_date,
+        from_date=occurred_from,
+        to_date=occurred_to,
         cursor=cursor,
         limit=limit,
     )
@@ -114,7 +114,6 @@ async def get_log(
 def _to_response(log) -> LogRead:
     return LogRead(
         id=str(log.id),
-        customer_id=str(log.customer_id),
         application_id=str(log.application_id),
         application_name=log.application_name,
         correlation_id=log.correlation_id,

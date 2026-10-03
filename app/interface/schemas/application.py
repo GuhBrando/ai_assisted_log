@@ -22,12 +22,23 @@ class ApplicationCreate(BaseModel):
         return result
 
 
-class ApplicationResponse(BaseModel):
+class ApiKeyRead(BaseModel):
+    """API key sem o segredo; o hash nunca sai da API."""
+    prefix: str
+    expires_at: datetime | None
+    revoked_at: datetime | None
+
+
+class ApplicationRead(BaseModel):
     id: str
-    customer_id: str
     name: str
     tags: list[str]
+    api_keys: list[ApiKeyRead]
     created_at: datetime
+
+
+class ApplicationList(BaseModel):
+    items: list[ApplicationRead]
 
 
 class ApiKeyResponse(BaseModel):
