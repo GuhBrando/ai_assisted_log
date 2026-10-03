@@ -858,3 +858,45 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
 
 - **Bug real encontrado e corrigido:** `login_user.py` usava `_pwd.check()` que não existe no pwdlib — o método correto é `_pwd.verify()`. Sem essa correção o login nunca funcionaria em produção.
 - Commit `e952955`.
+
+## 022 — Integrar o frontend com o backend
+
+- **Data:** 2026-10-02
+- **Branch:** `feature/frontend-backend-integration`
+- **PR:** —
+
+**Prompt**
+
+> Integre o frontend com o backend
+
+**Executado**
+
+- Leitura de `.ai/`, do contrato (`docs/api/openapi.yaml`), do cliente Electron (`frontend/src/main.ts`, `api/client.ts`, `api/query.ts`, telas) e das rotas FastAPI. Divergências entre o que o frontend chama (contrato) e o que o backend fazia:
+  - `GET /logs` lia `level_min`, `from_date` e `to_date`; o contrato e o frontend usam `min_level`, `occurred_from` e `occurred_to`. O FastAPI ignorava os nomes desconhecidos, então os filtros de nível e período não faziam nada.
+  - `occurred_to` era inclusivo (`$lte`); o contrato diz exclusivo.
+  - `GET /applications` devolvia uma lista solta; o frontend lê `items` (`ApplicationList`) e a tela de logs quebraria.
+  - `LogRead` e a resposta de aplicação traziam `customer_id`, que o contrato não tem; a aplicação não trazia `api_keys`.
+  - O Electron em desenvolvimento só falava com o Prism (4010).
+- Backend:
+  - `app/interface/routers/logs.py`: parâmetros de `GET /logs` com os nomes do contrato; `application_id` validado como `ObjectId` (422 em vez de 500); `customer_id` fora da resposta.
+  - `app/interface/schemas/log.py`: `LogRead` sem `customer_id`.
+  - `app/infrastructure/mongodb/repositories/log_repository.py`: fim do período exclusivo (`$lt`).
+  - `app/interface/schemas/application.py` e `routers/applications.py`: `ApplicationResponse` vira `ApplicationRead` (com `api_keys` sem hash, sem `customer_id`), novos `ApiKeyRead` e `ApplicationList`; `GET /applications` responde `{items: [...]}`.
+- Testes do backend:
+  - `tests/conftest.py` e `pytest.ini`: os 13 testes de endpoint nunca rodavam (autenticação no Mongo do Testcontainers sem `authSource=admin`, lifespan não executado pelo `ASGITransport`, loops de evento diferentes entre fixtures e testes). Corrigido.
+  - `tests/test_panel.py` (novo): formato de `GET /applications`, filtros `min_level`, `application_id`, `occurred_from`/`occurred_to` (fim exclusivo), campos de `LogRead` e 422 para `application_id` inválido. Os três testes falharam antes da correção.
+  - `uv run pytest tests`: 101 passaram (85 unitários, 16 de endpoint).
+- Frontend:
+  - `src/main.ts`: usa a API local em `127.0.0.1:8000` também em desenvolvimento; `--mock-api` (só fora do pacote) troca pelo Prism. Novo canal IPC `app:api-target`.
+  - `src/contracts.ts`, `src/preload.ts`: tipo `ApiTarget` e método `apiTarget()`.
+  - `src/renderer/api-target.ts` (novo), `Login.tsx`, `Logs.tsx`: o rótulo da API (`API local · 127.0.0.1:8000` ou `Mock Prism · 127.0.0.1:4010`) vem do processo principal, no lugar do texto fixo por `NODE_ENV`.
+  - `src/api/client.ts`: mensagem de erro usa o `detail` do Problem Details e só depois o `title` (o login errado mostrava "Unauthorized").
+  - `package.json`: script `start:mock`.
+  - Testes: `client.test.ts` (detail × title) e `Logs.test.tsx` (rótulo da API).
+  - `npm run typecheck` e `npm test` (18 testes) passaram; `npm run package` gerou o pacote. `npm run lint`: `oxlint` sem erros; `oxfmt --check` acusa todos os arquivos por causa do CRLF do checkout com `core.autocrlf=true`, e os arquivos alterados passaram no `oxfmt --check` em cópias com LF.
+- Documentação: `README.md`, `docs/api/README.md`, `.ai/architecture.md` (ADR-024) e `.ai/tech-stack.md` descrevem o backend como alvo padrão e o Prism como opção (`npm run start:mock`).
+- Verificação de ponta a ponta:
+  - Container `api` reconstruído com `docker compose up -d --build --wait`. Banco local vazio populado pela API pública com o cliente "Loja Demo" (usuário `demo@lojademo.dev`, senha [removido]), aplicações `checkout` e `catalogo` e 120 logs.
+  - O `ApiClient` e o `parseLogQuery` do frontend, num teste temporário (apagado depois), contra a API real: login errado, aplicações, paginação por cursor, filtros de nível, aplicação, tags, período e correlation ID, detalhe com senha mascarada. Passou.
+  - Electron aberto com `electron-forge start` e conduzido por CDP (Playwright): rótulo `API local · 127.0.0.1:8000`, "Credenciais inválidas" no login errado, 50 logs na primeira página, aplicações no filtro, filtro checkout + Error e acima com 18 logs só de Error/Critical, detalhe com exceção e `password` mascarado.
+- Em aberto, divergências do contrato fora do caminho do frontend: `POST /customers` com corpo plano (o contrato é `{customer, user}`), `raw_key` no lugar de `key` na API key criada, sem 403 para cliente inativo nas rotas do painel, sem `Cache-Control: no-store` no `POST /auth/login`, tags do filtro de `GET /logs` sem normalização no backend e `LogListResponse` ainda sem o nome `LogPage` do contrato.

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { LogApi } from './contracts';
 
 const api: LogApi = {
+  apiTarget: () => ipcRenderer.invoke('app:api-target'),
   login: (credentials) => ipcRenderer.invoke('auth:login', credentials),
   logout: () => ipcRenderer.invoke('auth:logout'),
   session: () => ipcRenderer.invoke('auth:session'),

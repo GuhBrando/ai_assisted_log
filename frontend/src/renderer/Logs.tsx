@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useApiTargetLabel } from './api-target';
 import { DateTimeField } from './DateTimeField';
 import { TagField } from './TagField';
 import type { LogQuery, LogRead } from '../contracts';
@@ -235,6 +236,7 @@ export function Logs({
   ]);
   const [pageIndex, setPageIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const apiLabel = useApiTargetLabel();
   const applications = useQuery({
     queryKey: ['applications'],
     queryFn: async () =>
@@ -371,11 +373,7 @@ export function Logs({
         </div>
         <div className="topbar-actions">
           <span className="connection-dot" />
-          <span className="connection-label">
-            {process.env.NODE_ENV === 'development'
-              ? 'Prism · 4010'
-              : 'API local · 8000'}
-          </span>
+          <span className="connection-label">{apiLabel}</span>
           <button className="quiet-button" onClick={onLogout}>
             Sair
           </button>

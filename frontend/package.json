@@ -7,6 +7,7 @@
   "main": ".webpack/main/index.cjs",
   "scripts": {
     "start": "electron-forge start",
+    "start:mock": "electron-forge start -- --mock-api",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "lint": "oxlint && oxfmt --check",

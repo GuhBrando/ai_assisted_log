@@ -39,4 +39,27 @@ describe('cliente HTTP do processo principal', () => {
     await expect(client.listApplications()).rejects.toBeInstanceOf(HttpError);
     expect(calls).toHaveLength(2);
   });
+
+  it('mostra o detail do Problem Details e usa o title só como alternativa', async () => {
+    const problems = [
+      { title: 'Unauthorized', status: 401, detail: 'Credenciais inválidas' },
+      { title: 'Unauthorized', status: 401 },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(problems.shift()), { status: 401 }),
+      ),
+    );
+    const client = new ApiClient('http://127.0.0.1:8000');
+    const credentials = { email: 'ana@example.com', password: 'errada' };
+    await expect(client.login(credentials)).rejects.toMatchObject({
+      message: 'Credenciais inválidas',
+      status: 401,
+    });
+    await expect(client.login(credentials)).rejects.toMatchObject({
+      message: 'Unauthorized',
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApiTargetLabel } from './api-target';
 
 interface Props {
   onLogin: (email: string, password: string) => Promise<string | null>;
@@ -9,6 +10,7 @@ export function Login({ onLogin }: Props): React.JSX.Element {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const apiLabel = useApiTargetLabel();
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setBusy(true);
@@ -60,11 +62,7 @@ export function Login({ onLogin }: Props): React.JSX.Element {
         <button className="primary-button" type="submit" disabled={busy}>
           {busy ? 'Conectando…' : 'Entrar'}
         </button>
-        <p className="login-footnote">
-          {process.env.NODE_ENV === 'development'
-            ? 'Ambiente de desenvolvimento · Prism em 127.0.0.1:4010'
-            : 'API local · 127.0.0.1:8000'}
-        </p>
+        <p className="login-footnote">{apiLabel}</p>
       </form>
     </main>
   );

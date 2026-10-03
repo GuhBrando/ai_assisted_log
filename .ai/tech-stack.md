@@ -41,7 +41,7 @@ O frontend em `frontend/` usa `npm` e `package-lock.json`, separadamente do `uv.
 | Mock de desenvolvimento | Prism CLI | 5.14.2 | Proxy de validação OpenAPI em `127.0.0.1:4010`, com 1.600 logs determinísticos servidos por upstream local em `127.0.0.1:4011` |
 | Verificação | Vitest, oxlint, oxfmt | 5.0.2 / 1.86.0 / 0.41.0 | Testes, lint e formatação |
 
-O aplicativo em desenvolvimento usa apenas o Prism na porta 4010; o pacote Windows usa a API local fixa na porta 8000. O renderer não chama a API diretamente. O token de usuário fica em memória no processo principal. A versão inicial não persiste sessão e não possui atualização automática.
+O aplicativo usa a API local na porta 8000, em desenvolvimento e no pacote Windows. Só em desenvolvimento, `npm run start:mock` usa o Prism na porta 4010. O renderer não chama a API diretamente. O token de usuário fica em memória no processo principal. A versão inicial não persiste sessão e não possui atualização automática.
 
 ## Configuração obrigatória
 

@@ -24,6 +24,11 @@ const sample: LogRead = {
   expire_at: '2026-10-29T14:03:13.000Z',
 };
 
+const apiTarget = async () => ({
+  ok: true as const,
+  data: { url: 'http://127.0.0.1:8000', mock: false },
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -33,6 +38,7 @@ describe('investigação visual', () => {
   it('mostra dados resumidos e busca o detalhe completo com stack trace', async () => {
     const getLog = vi.fn(async () => ({ ok: true as const, data: sample }));
     const api = {
+      apiTarget,
       listApplications: async () => ({
         ok: true as const,
         data: { items: [] },
@@ -55,6 +61,7 @@ describe('investigação visual', () => {
     const row = await screen.findByRole('button', { name: /Falha ao cobrar/ });
     expect(row.textContent).toContain('ERROR');
     expect(screen.getByText('Busca somente na página carregada')).toBeTruthy();
+    expect(await screen.findByText('API local · 127.0.0.1:8000')).toBeTruthy();
     await userEvent.click(row);
     await waitFor(() => expect(getLog).toHaveBeenCalledWith(sample.id));
     expect(
@@ -71,6 +78,7 @@ function mountList(
   }>,
 ): void {
   const api = {
+    apiTarget,
     listApplications: async () => ({ ok: true as const, data: { items: [] } }),
     listLogs,
     getLog: async () => ({ ok: true as const, data: sample }),
