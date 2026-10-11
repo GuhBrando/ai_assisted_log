@@ -1,12 +1,10 @@
 """Testes unitários de IngestLog."""
 
-from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
-from app.application.errors import Forbidden, NotAuthenticated, PayloadTooLarge
+from app.application.errors import Forbidden, InvalidLogData, NotAuthenticated, PayloadTooLarge
 from app.application.use_cases.logs.ingest_log import IngestLog
 from tests.unit.conftest import (
     APP_ID,
@@ -112,24 +110,40 @@ async def test_mascara_campo_sensivel_aninhado():
 
 
 @pytest.mark.asyncio
+async def test_mascara_campo_sensivel_dentro_de_lista():
+    log_repo = mock_log_repo()
+    await _execute(
+        log_repo=log_repo,
+        information_data={"sessions": [{"token": "abc123", "active": True}]},
+    )
+    _, kwargs = log_repo.insert.call_args
+    assert kwargs["information_data"]["sessions"] == [
+        {"token": "***REDACTED***", "active": True}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_chave_com_dolar_levanta_422():
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidLogData, match="Chave proibida"):
         await _execute(information_data={"$where": "malicioso"})
-    assert exc.value.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_chave_com_ponto_levanta_422():
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidLogData, match="Chave proibida"):
         await _execute(information_data={"chave.proibida": "valor"})
-    assert exc.value.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_chave_proibida_aninhada_levanta_422():
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidLogData, match="Chave proibida"):
         await _execute(information_data={"nivel1": {"$operador": "valor"}})
-    assert exc.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_information_data_nao_serializavel_levanta_erro_de_validacao():
+    with pytest.raises(InvalidLogData, match="não pode ser serializado"):
+        await _execute(information_data={"valor": object()})
 
 
 @pytest.mark.asyncio

@@ -105,3 +105,12 @@ async def test_list_logs_invalid_application_id(http_client):
     r = await http_client.get("/logs", headers=user_headers, params={"application_id": "abc"})
     assert r.status_code == 422
     assert r.headers["content-type"] == "application/problem+json"
+
+
+@pytest.mark.asyncio
+async def test_invalid_resource_ids_return_not_found(http_client):
+    user_headers, _, _ = await _setup_panel(http_client, "4")
+
+    for path in ("/logs/not-an-object-id", "/applications/not-an-object-id", "/users/not-an-object-id"):
+        r = await http_client.get(path, headers=user_headers)
+        assert r.status_code == 404, f"{path}: {r.text}"

@@ -16,3 +16,11 @@ class Conflict(Exception):
 
 class PayloadTooLarge(Exception):
     """information_data acima do limite de 64 KB → 413."""
+
+
+class InvalidLogData(Exception):
+    """Dados do log inválidos para ingestão → 422."""
+
+
+class InvalidRetentionDays(Exception):
+    """Prazo de retenção fora dos limites permitidos → 422."""

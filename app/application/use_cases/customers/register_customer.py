@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from pwdlib import PasswordHash
 
-from app.application.errors import Conflict
+from app.application.errors import Conflict, InvalidRetentionDays
 from app.application.models import CustomerDoc, UserDoc
 from app.application.ports.customer_repository import CustomerRepository
 from app.application.ports.user_repository import UserRepository
@@ -37,8 +37,7 @@ class RegisterCustomer:
         user_password: str,
     ) -> RegisterCustomerResult:
         if not (RETENTION_DAYS_MIN <= retention_days <= RETENTION_DAYS_MAX):
-            from fastapi import HTTPException
-            raise HTTPException(422, "retention_days fora dos limites permitidos")
+            raise InvalidRetentionDays("retention_days fora dos limites permitidos")
 
         existing = await self._user_repo.find_by_email(user_email)
         if existing is not None:

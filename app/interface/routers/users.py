@@ -1,4 +1,5 @@
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.application.errors import Conflict
@@ -58,7 +59,7 @@ async def get_user(
 ) -> UserResponse:
     try:
         oid = ObjectId(user_id)
-    except Exception:
+    except InvalidId:
         raise HTTPException(404, "Usuário não encontrado")
     user = await user_repo.find_by_id(oid)
     if user is None or user.customer_id != ObjectId(claims.customer_id):

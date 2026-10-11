@@ -75,6 +75,7 @@ async def test_ingest_log_sensitive_masking(http_client):
                 "user": "ana",
                 "password": "secreta123",
                 "cpf": "123.456.789-00",
+                "sessions": [{"token": "token-secreto", "active": True}],
             },
         },
     )
@@ -91,6 +92,7 @@ async def test_ingest_log_sensitive_masking(http_client):
     assert info["password"] == "***REDACTED***"
     assert info["cpf"] == "***REDACTED***"
     assert info["user"] == "ana"
+    assert info["sessions"] == [{"token": "***REDACTED***", "active": True}]
 
 
 @pytest.mark.asyncio

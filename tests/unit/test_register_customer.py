@@ -1,9 +1,8 @@
 """Testes unitários de RegisterCustomer."""
 
 import pytest
-from fastapi import HTTPException
 
-from app.application.errors import Conflict
+from app.application.errors import Conflict, InvalidRetentionDays
 from app.application.use_cases.customers.register_customer import RegisterCustomer
 from tests.unit.conftest import make_user, mock_customer_repo, mock_user_repo
 
@@ -40,16 +39,14 @@ async def test_email_ja_cadastrado_levanta_conflict():
 
 @pytest.mark.asyncio
 async def test_retention_days_abaixo_do_minimo_levanta_422():
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidRetentionDays):
         await _execute(retention_days=0)
-    assert exc.value.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_retention_days_acima_do_maximo_levanta_422():
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidRetentionDays):
         await _execute(retention_days=9999)
-    assert exc.value.status_code == 422
 
 
 @pytest.mark.asyncio

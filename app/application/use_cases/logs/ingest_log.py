@@ -3,11 +3,12 @@
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from bson import ObjectId
 
-from app.application.errors import Forbidden, NotAuthenticated, PayloadTooLarge
+from app.application.errors import Forbidden, InvalidLogData, NotAuthenticated, PayloadTooLarge
 from app.application.ports.application_repository import ApplicationRepository
 from app.application.ports.customer_repository import CustomerRepository
 from app.application.ports.log_repository import LogRepository
@@ -55,7 +56,7 @@ class IngestLog:
         message: str,
         exception: str | None,
         environment: str,
-        information_data: dict | None,
+        information_data: dict[str, Any] | None,
         tags: list[str],
         occurred_at: datetime,
     ) -> ObjectId:
@@ -69,7 +70,7 @@ class IngestLog:
         if customer is None or not customer.is_active:
             raise Forbidden
 
-        # Valida e normaliza tags do log (422 tratado pelo router se ValidationError)
+        # Valida e normaliza tags do log (422 tratado pelo router)
         log_tags = _normalize_tags(tags, MAX_TAGS)
 
         # Mescla: tags da aplicação têm precedência (RN-15)
@@ -110,51 +111,48 @@ def _normalize_tags(tags: list[str], max_count: int) -> list[str]:
     for raw in tags:
         t = raw.strip().lower()
         if not _TAG_RE.match(t):
-            from fastapi import HTTPException
-            raise HTTPException(422, f"Tag inválida: {raw!r}")
+            raise InvalidLogData(f"Tag inválida: {raw!r}")
         if len(t) > TAG_MAX_LENGTH:
-            from fastapi import HTTPException
-            raise HTTPException(422, f"Tag muito longa: {raw!r}")
+            raise InvalidLogData(f"Tag muito longa: {raw!r}")
         if t not in seen:
             seen.add(t)
             normalized.append(t)
     if len(normalized) > max_count:
-        from fastapi import HTTPException
-        raise HTTPException(422, f"Máximo de {max_count} tags por log")
+        raise InvalidLogData(f"Máximo de {max_count} tags por log")
     return normalized
 
 
-def _validate_info_data(data: dict, _path: str = "") -> None:
+def _validate_info_data(data: dict[str, Any]) -> None:
     """Verifica chaves com $ ou . e tamanho ≤ 64 KB (RN-05)."""
     try:
-        size = len(json.dumps(data, default=str).encode())
-    except Exception:
-        size = 0
+        size = len(json.dumps(data).encode())
+    except (TypeError, ValueError) as exc:
+        raise InvalidLogData("information_data não pode ser serializado como JSON") from exc
     if size > _INFO_DATA_LIMIT:
         raise PayloadTooLarge
 
     _check_keys(data)
 
 
-def _check_keys(data: object) -> None:
+def _check_keys(data: Any) -> None:
     if isinstance(data, dict):
         for key, value in data.items():
             if "$" in key or "." in key:
-                from fastapi import HTTPException
-                raise HTTPException(422, f"Chave proibida em information_data: {key!r}")
+                raise InvalidLogData(f"Chave proibida em information_data: {key!r}")
             _check_keys(value)
     elif isinstance(data, list):
         for item in data:
             _check_keys(item)
 
 
-def _mask_sensitive(data: dict) -> dict:
-    result = {}
-    for key, value in data.items():
-        if key.lower() in _SENSITIVE_FIELDS:
-            result[key] = "***REDACTED***"
-        elif isinstance(value, dict):
-            result[key] = _mask_sensitive(value)
-        else:
-            result[key] = value
-    return result
+def _mask_sensitive(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "***REDACTED***"
+            if key.lower() in _SENSITIVE_FIELDS
+            else _mask_sensitive(nested_value)
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_sensitive(item) for item in value]
+    return value

@@ -920,3 +920,59 @@ Os prompts anteriores a este registro, que geraram as PRs #1 e #2, não foram re
   - `bbf2ff5` — frontend com a API local por padrão, documentação e o registro do prompt 022.
 - Push de `feature/frontend-backend-integration` e PR #10 com base em `main`. O repositório não tem template de PR; a descrição segue o formato das PRs anteriores (resumo, o que estava quebrado, mudanças, como rodar, verificação e pontos em aberto).
 - Esta entrada e o número da PR na entrada 022 foram num segundo commit da mesma PR, depois de a PR existir, como na entrada 006.
+
+## 024 — Refatoração da ingestão de logs
+
+- **Data:** 2026-10-11
+- **Branch:** `main`
+- **PR:** —
+
+**Prompt**
+
+> # Refatoração e melhoria do código existente
+> Analise o projeto como um engenheiro de software experiente e realize uma refatoração do código existente, buscando melhorar sua qualidade, organização, legibilidade e manutenibilidade.
+>
+> Considere a arquitetura já definida, os padrões utilizados, a possibilidade de reaproveitar código e eliminar duplicações, além de boas práticas de desenvolvimento, desempenho, segurança e testabilidade.
+>
+> **Regras obrigatórias:**
+>
+> - Preserve a essência do projeto, suas funcionalidades, regras de negócio e comportamentos existentes.
+> - Não crie funcionalidades, módulos, componentes ou estruturas novas sem necessidade real.
+> - Não reescreva o projeto nem altere sua arquitetura sem uma justificativa concreta.
+> - Priorize ajustes pontuais, simplificações e reutilização do que já existe.
+> - Evite abstrações, dependências e complexidade desnecessárias.
+> - Antes de alterar, analise o código e identifique o que realmente precisa ser melhorado.
+> - Preserve a compatibilidade e valide as alterações para evitar regressões.
+> - Se houver alguma ambiguidade que possa mudar o comportamento do sistema, pergunte antes de decidir.
+> Faça apenas as alterações que tragam benefícios técnicos reais. Ao finalizar, apresente um resumo do que foi ajustado, dos motivos e das validações realizadas.
+>
+> **O objetivo é melhorar o código existente sem mudar a essência do projeto.**
+
+**Executado**
+
+- `app/application/errors.py` e `app/application/use_cases/logs/ingest_log.py`: validações de ingestão agora lançam um erro da camada de aplicação (`InvalidLogData`) em vez de depender do FastAPI; falhas de serialização JSON deixam de ser aceitas silenciosamente; o mascaramento percorre também objetos dentro de listas.
+- `app/interface/routers/logs.py`: converte `InvalidLogData` para a resposta HTTP 422, preservando o contrato existente.
+- `tests/unit/test_ingest_log.py` e `tests/test_logs.py`: cobrem serialização inválida e mascaramento aninhado em listas, incluindo o caminho HTTP.
+- Ambiente local `.venv` preparado com dependências para testes, pois pytest e uv não estavam disponíveis inicialmente.
+- Verificação: `python -m pytest tests/unit/test_ingest_log.py` e os dois testes direcionados de `tests/test_logs.py` passaram (21 testes); `python -m pytest tests` passou (103 testes); `py_compile` dos arquivos Python alterados e `git diff --check` passaram. A suíte reportou somente o aviso preexistente de depreciação de `testcontainers.mongodb`.
+- Nenhum commit ou push realizado.
+
+## 025 — Revisão de outros pontos do backend
+
+- **Data:** 2026-10-11
+- **Branch:** `refactor`
+- **PR:** —
+
+**Prompt**
+
+> Poderia revisar e refatorar outros pontos necessarios tb?
+
+**Executado**
+
+- `app/application/errors.py` e `app/application/use_cases/customers/register_customer.py`: validação do prazo de retenção usa `InvalidRetentionDays`, sem importar FastAPI na camada de aplicação; `app/interface/routers/customers.py` mantém a resposta HTTP 422.
+- `app/interface/routers/applications.py`, `users.py` e `logs.py`: erros ao converter IDs para `ObjectId` agora capturam `bson.errors.InvalidId` em vez de mascarar qualquer exceção como 404. A conversão de log para resposta recebeu anotação `LogDoc`.
+- `app/infrastructure/mongodb/repositories/log_repository.py`: decodificação do cursor captura somente erros esperados de formato, preservando o comportamento para cursores inválidos sem esconder exceções inesperadas.
+- `tests/unit/test_register_customer.py`, `tests/unit/test_log_repository.py` e `tests/test_panel.py`: ajustados ou adicionados testes para os erros de retenção, cursores válidos/inválidos e IDs inválidos nas rotas.
+- Removidos imports sem uso nos módulos alterados identificados pela análise Pylance.
+- Verificação: `python -m pytest tests` passou (109 testes); `py_compile` e `git diff --check` passaram. Pylance não apontou problemas nos arquivos alterados; os avisos restantes da workspace estão em arquivos não alterados. A suíte reportou somente o aviso preexistente de depreciação de `testcontainers.mongodb`.
+- Nenhum commit ou push realizado.
