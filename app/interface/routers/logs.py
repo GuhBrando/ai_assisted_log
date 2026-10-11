@@ -2,9 +2,11 @@ from datetime import datetime
 from uuid import UUID
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.application.errors import Forbidden, NotAuthenticated, PayloadTooLarge
+from app.application.errors import Forbidden, InvalidLogData, NotAuthenticated, PayloadTooLarge
+from app.application.models import LogDoc
 from app.application.ports.application_repository import ApplicationRepository
 from app.application.ports.customer_repository import CustomerRepository
 from app.application.ports.log_repository import LogRepository
@@ -56,6 +58,8 @@ async def ingest_log(
         raise HTTPException(403, "Cliente inativo")
     except PayloadTooLarge:
         raise HTTPException(413, "information_data acima de 64 KB")
+    except InvalidLogData as exc:
+        raise HTTPException(422, str(exc)) from exc
     return LogCreateResponse(id=str(log_id))
 
 
@@ -101,7 +105,7 @@ async def get_log(
 ) -> LogRead:
     try:
         oid = ObjectId(log_id)
-    except Exception:
+    except InvalidId:
         raise HTTPException(404, "Log não encontrado")
 
     customer_id = ObjectId(claims.customer_id)
@@ -111,7 +115,7 @@ async def get_log(
     return _to_response(log)
 
 
-def _to_response(log) -> LogRead:
+def _to_response(log: LogDoc) -> LogRead:
     return LogRead(
         id=str(log.id),
         application_id=str(log.application_id),

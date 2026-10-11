@@ -1,4 +1,5 @@
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.application.errors import Conflict, NotFound
@@ -55,7 +56,7 @@ async def get_application(
 ) -> ApplicationRead:
     try:
         oid = ObjectId(app_id)
-    except Exception:
+    except InvalidId:
         raise HTTPException(404, "Aplicação não encontrada")
     app = await app_repo.find_by_id(oid)
     if app is None or app.customer_id != ObjectId(claims.customer_id):
@@ -72,7 +73,7 @@ async def generate_api_key(
 ) -> ApiKeyResponse:
     try:
         oid = ObjectId(app_id)
-    except Exception:
+    except InvalidId:
         raise HTTPException(404, "Aplicação não encontrada")
     use_case = GenerateApiKey(app_repo)
     try:
@@ -99,7 +100,7 @@ async def revoke_api_key(
 ) -> None:
     try:
         oid = ObjectId(app_id)
-    except Exception:
+    except InvalidId:
         raise HTTPException(404, "Aplicação não encontrada")
     use_case = RevokeApiKey(app_repo)
     try:

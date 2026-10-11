@@ -1,9 +1,11 @@
 import base64
+import binascii
 import json
 from datetime import UTC, datetime
 from uuid import UUID
 
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from app.application.models import LogDoc, LogPage
 from app.application.ports.log_repository import LogRepository
@@ -125,7 +127,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime, ObjectId] | None:
         if occurred_at.tzinfo is None:
             occurred_at = occurred_at.replace(tzinfo=UTC)
         return occurred_at, ObjectId(data["id"])
-    except Exception:
+    except (binascii.Error, InvalidId, KeyError, TypeError, UnicodeError, ValueError):
         return None
 
 

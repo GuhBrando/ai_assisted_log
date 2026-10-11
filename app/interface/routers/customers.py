@@ -1,13 +1,13 @@
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.application.errors import Conflict
-from app.application.models import CustomerDoc, UserDoc
+from app.application.errors import Conflict, InvalidRetentionDays
+from app.application.models import CustomerDoc
 from app.application.ports.customer_repository import CustomerRepository
 from app.application.ports.user_repository import UserRepository
 from app.application.use_cases.customers.register_customer import RegisterCustomer
 from app.interface.deps import UserTokenClaims, get_customer_repo, get_user_claims, get_user_repo
 from app.interface.schemas.customer import CustomerCreate, CustomerResponse
-from bson import ObjectId
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -29,6 +29,8 @@ async def register_customer(
         )
     except Conflict as e:
         raise HTTPException(409, str(e))
+    except InvalidRetentionDays as e:
+        raise HTTPException(422, str(e)) from e
     return _customer_to_response(result.customer)
 
 
